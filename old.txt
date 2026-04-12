@@ -1,0 +1,597 @@
+import { Link } from "react-router-dom";
+import {
+  MessageCircle,
+  Shield,
+  Zap,
+  Users,
+  ArrowRight,
+  Menu,
+  X,
+  Globe,
+  Lock,
+  Smartphone,
+  Star,
+  ChevronRight,
+  Github,
+} from "lucide-react";
+import { useState } from "react";
+
+const navLinks = [
+  { label: "Features", href: "#features" },
+  { label: "How it Works", href: "#how-it-works" },
+  { label: "Testimonials", href: "#testimonials" },
+];
+
+const features = [
+  {
+    icon: Zap,
+    title: "Real-Time Messaging",
+    description:
+      "Send and receive messages instantly with zero lag. Stay connected with your team no matter where you are.",
+    color: "amber",
+  },
+  {
+    icon: Shield,
+    title: "End-to-End Encryption",
+    description:
+      "Your conversations are fully encrypted. Only you and your recipients can read the messages.",
+    color: "blue",
+  },
+  {
+    icon: Users,
+    title: "Group Conversations",
+    description:
+      "Create group chats for your teams, projects, or friend circles. Collaborate with ease.",
+    color: "emerald",
+  },
+  {
+    icon: Globe,
+    title: "Cross-Platform",
+    description:
+      "Access NexTalk from any device — desktop, tablet, or mobile. Your chats sync seamlessly.",
+    color: "purple",
+  },
+  {
+    icon: Lock,
+    title: "Privacy First",
+    description:
+      "We never sell your data. Your privacy is our top priority with minimal data collection.",
+    color: "rose",
+  },
+  {
+    icon: Smartphone,
+    title: "Smart Notifications",
+    description:
+      "Get notified about what matters. Customize alerts per conversation so you never miss a beat.",
+    color: "cyan",
+  },
+];
+
+const featureColors = {
+  amber: { bg: "bg-amber-50", icon: "text-amber-500", ring: "group-hover:ring-amber-200" },
+  blue: { bg: "bg-blue-50", icon: "text-blue-500", ring: "group-hover:ring-blue-200" },
+  emerald: { bg: "bg-emerald-50", icon: "text-emerald-500", ring: "group-hover:ring-emerald-200" },
+  purple: { bg: "bg-purple-50", icon: "text-purple-500", ring: "group-hover:ring-purple-200" },
+  rose: { bg: "bg-rose-50", icon: "text-rose-500", ring: "group-hover:ring-rose-200" },
+  cyan: { bg: "bg-cyan-50", icon: "text-cyan-500", ring: "group-hover:ring-cyan-200" },
+};
+
+const steps = [
+  {
+    step: "01",
+    title: "Create your account",
+    description: "Sign up in seconds with your email, Google, or GitHub account.",
+  },
+  {
+    step: "02",
+    title: "Find your people",
+    description: "Add contacts, create groups, and organize your conversations.",
+  },
+  {
+    step: "03",
+    title: "Start chatting",
+    description: "Send messages, share files, and collaborate in real time.",
+  },
+];
+
+const testimonials = [
+  {
+    name: "Sarah Chen",
+    role: "Product Manager",
+    text: "NexTalk has completely transformed how our remote team communicates. The speed and reliability are unmatched.",
+    avatar: "SC",
+  },
+  {
+    name: "Alex Rivera",
+    role: "Software Engineer",
+    text: "Finally a chat app that respects privacy without sacrificing features. The encryption gives us peace of mind.",
+    avatar: "AR",
+  },
+  {
+    name: "Priya Sharma",
+    role: "Design Lead",
+    text: "The clean interface and smart notifications help me stay focused. Best team chat tool we've used.",
+    avatar: "PS",
+  },
+];
+
+const Home = () => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-white">
+      {/* ─── Header ─── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-stone-200/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <Link to="/" className="flex items-center gap-2.5">
+              <img src="/orignal_logo.png" alt="NexTalk" className="w-9 h-9 object-contain" />
+              <span className="text-xl font-bold text-stone-900">
+                Nex<span className="text-amber-500">Talk</span>
+              </span>
+            </Link>
+
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-8">
+              {navLinks.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+
+            {/* Desktop Auth Buttons */}
+            <div className="hidden md:flex items-center gap-3">
+              <Link
+                to="/login"
+                className="px-4 py-2 text-sm font-medium text-stone-700 hover:text-stone-900 transition-colors"
+              >
+                Sign in
+              </Link>
+              <Link
+                to="/signup"
+                className="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all duration-200 shadow-sm"
+              >
+                Get Started
+              </Link>
+            </div>
+
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-stone-200/60 bg-white">
+            <div className="px-4 py-4 space-y-1">
+              {navLinks.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2.5 text-sm font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-50 rounded-lg transition-colors"
+                >
+                  {link.label}
+                </a>
+              ))}
+              <div className="pt-3 mt-3 border-t border-stone-100 flex flex-col gap-2">
+                <Link
+                  to="/login"
+                  className="px-3 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 rounded-lg text-center transition-colors"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="px-3 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-lg text-center"
+                >
+                  Get Started
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* ─── Hero Section ─── */}
+      <section className="relative pt-32 pb-20 sm:pt-40 sm:pb-28 overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-amber-50 to-transparent rounded-full blur-3xl opacity-60" />
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto text-center">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-50 border border-amber-200/60 rounded-full mb-6">
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-xs font-semibold text-amber-700 tracking-wide uppercase">
+                Now in Beta
+              </span>
+            </div>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-stone-900 leading-tight tracking-tight">
+              Where conversations{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-amber-600">
+                come alive
+              </span>
+            </h1>
+            <p className="mt-6 text-lg sm:text-xl text-stone-500 leading-relaxed max-w-2xl mx-auto">
+              NexTalk is a modern, secure, and blazing-fast chat platform built for teams and
+              individuals who value real communication.
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link
+                to="/signup"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-xl hover:from-amber-600 hover:to-amber-700 shadow-lg shadow-amber-500/20 transition-all duration-200"
+              >
+                Start chatting free
+                <ArrowRight className="w-5 h-5" />
+              </Link>
+              <a
+                href="#features"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold text-stone-700 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 hover:border-stone-300 transition-all duration-200"
+              >
+                See features
+                <ChevronRight className="w-5 h-5" />
+              </a>
+            </div>
+
+            {/* Social proof */}
+            <div className="mt-12 flex items-center justify-center gap-6 text-sm text-stone-400">
+              <div className="flex items-center gap-1.5">
+                <div className="flex -space-x-2">
+                  {["bg-amber-400", "bg-blue-400", "bg-emerald-400", "bg-rose-400"].map(
+                    (bg, i) => (
+                      <div
+                        key={i}
+                        className={`w-7 h-7 rounded-full ${bg} border-2 border-white flex items-center justify-center`}
+                      >
+                        <span className="text-white text-[10px] font-bold">
+                          {["K", "A", "S", "R"][i]}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+                <span className="ml-1 text-stone-500 font-medium">1k+ users</span>
+              </div>
+              <div className="w-px h-4 bg-stone-200" />
+              <div className="flex items-center gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                ))}
+                <span className="ml-1 text-stone-500 font-medium">4.9/5</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Hero mockup */}
+          <div className="mt-16 sm:mt-20 max-w-4xl mx-auto">
+            <div className="relative rounded-2xl border border-stone-200/80 bg-gradient-to-b from-stone-50 to-white shadow-2xl shadow-stone-200/40 overflow-hidden">
+              {/* Window bar */}
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-100 bg-stone-50/80">
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-red-400" />
+                  <div className="w-3 h-3 rounded-full bg-amber-400" />
+                  <div className="w-3 h-3 rounded-full bg-green-400" />
+                </div>
+                <div className="flex-1 flex justify-center">
+                  <div className="px-4 py-1 bg-white rounded-md border border-stone-200 text-xs text-stone-400">
+                    nextalk.app
+                  </div>
+                </div>
+              </div>
+              {/* Chat mockup */}
+              <div className="p-6 sm:p-8 space-y-4">
+                {/* Left message */}
+                <div className="flex items-start gap-3 max-w-sm">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-blue-600 text-xs font-bold">A</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-400 mb-1">Alex Rivera</p>
+                    <div className="bg-stone-100 rounded-2xl rounded-tl-sm px-4 py-2.5">
+                      <p className="text-sm text-stone-700">
+                        Hey team! The new design is ready for review.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {/* Right message */}
+                <div className="flex items-start gap-3 max-w-sm ml-auto flex-row-reverse">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <span className="text-amber-600 text-xs font-bold">Y</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-stone-400 mb-1">You</p>
+                    <div className="bg-amber-500 rounded-2xl rounded-tr-sm px-4 py-2.5">
+                      <p className="text-sm text-white">Looks great! Let's ship it.</p>
+                    </div>
+                  </div>
+                </div>
+                {/* Left message */}
+                <div className="flex items-start gap-3 max-w-sm">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                    <span className="text-emerald-600 text-xs font-bold">S</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-stone-400 mb-1">Sarah Chen</p>
+                    <div className="bg-stone-100 rounded-2xl rounded-tl-sm px-4 py-2.5">
+                      <p className="text-sm text-stone-700">Deploying now. This is going to be awesome!</p>
+                    </div>
+                  </div>
+                </div>
+                {/* Typing indicator */}
+                <div className="flex items-start gap-3 max-w-sm">
+                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                    <span className="text-purple-600 text-xs font-bold">P</span>
+                  </div>
+                  <div className="bg-stone-100 rounded-2xl rounded-tl-sm px-4 py-3">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-stone-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <div className="w-2 h-2 bg-stone-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <div className="w-2 h-2 bg-stone-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Features Section ─── */}
+      <section id="features" className="py-20 sm:py-28 bg-stone-50/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mx-auto text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
+              Everything you need to communicate
+            </h2>
+            <p className="mt-4 text-lg text-stone-500">
+              Packed with powerful features designed to make team communication effortless.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature) => {
+              const colors = featureColors[feature.color];
+              return (
+                <div
+                  key={feature.title}
+                  className="group bg-white rounded-2xl border border-stone-200/60 p-6 hover:shadow-lg hover:shadow-stone-100 hover:border-stone-200 transition-all duration-300"
+                >
+                  <div
+                    className={`w-12 h-12 rounded-xl ${colors.bg} flex items-center justify-center ring-1 ring-transparent ${colors.ring} transition-all duration-300`}
+                  >
+                    <feature.icon className={`w-6 h-6 ${colors.icon}`} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold text-stone-900">{feature.title}</h3>
+                  <p className="mt-2 text-sm text-stone-500 leading-relaxed">
+                    {feature.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── How It Works ─── */}
+      <section id="how-it-works" className="py-20 sm:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mx-auto text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
+              Up and running in minutes
+            </h2>
+            <p className="mt-4 text-lg text-stone-500">
+              Getting started with NexTalk is as easy as 1-2-3.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            {steps.map((item, index) => (
+              <div key={item.step} className="relative text-center">
+                {/* Connector line */}
+                {index < steps.length - 1 && (
+                  <div className="hidden md:block absolute top-8 left-[calc(50%+40px)] w-[calc(100%-80px)] h-px bg-gradient-to-r from-amber-300 to-amber-100" />
+                )}
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-white text-xl font-bold shadow-lg shadow-amber-500/20 mb-5">
+                  {item.step}
+                </div>
+                <h3 className="text-lg font-semibold text-stone-900">{item.title}</h3>
+                <p className="mt-2 text-sm text-stone-500 leading-relaxed max-w-xs mx-auto">
+                  {item.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Testimonials ─── */}
+      <section id="testimonials" className="py-20 sm:py-28 bg-gradient-to-br from-stone-950 via-stone-900 to-amber-950 relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 right-20 w-72 h-72 bg-amber-400 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 left-20 w-96 h-96 bg-amber-600 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mx-auto text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              Loved by teams everywhere
+            </h2>
+            <p className="mt-4 text-lg text-stone-400">
+              See what people are saying about NexTalk.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {testimonials.map((t) => (
+              <div
+                key={t.name}
+                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all duration-300"
+              >
+                <div className="flex items-center gap-1 mb-4">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <p className="text-stone-300 text-sm leading-relaxed mb-6">"{t.text}"</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                    <span className="text-white text-sm font-semibold">{t.avatar}</span>
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-medium">{t.name}</p>
+                    <p className="text-stone-500 text-xs">{t.role}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── CTA Section ─── */}
+      <section className="py-20 sm:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative bg-gradient-to-br from-amber-500 to-amber-600 rounded-3xl p-10 sm:p-16 text-center overflow-hidden">
+            {/* Background pattern */}
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute -top-10 -right-10 w-64 h-64 bg-white rounded-full blur-2xl" />
+              <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-white rounded-full blur-2xl" />
+            </div>
+
+            <div className="relative z-10">
+              <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                Ready to start the conversation?
+              </h2>
+              <p className="mt-4 text-amber-100 text-lg max-w-xl mx-auto">
+                Join thousands of users already chatting on NexTalk. Free to use, no credit card
+                required.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link
+                  to="/signup"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold text-amber-600 bg-white rounded-xl hover:bg-amber-50 shadow-lg shadow-amber-700/20 transition-all duration-200"
+                >
+                  Get started for free
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+                <Link
+                  to="/login"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold text-white border-2 border-white/30 rounded-xl hover:bg-white/10 transition-all duration-200"
+                >
+                  Sign in
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer className="border-t border-stone-200/60 bg-stone-50/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {/* Brand column */}
+            <div className="col-span-2 md:col-span-1">
+              <Link to="/" className="flex items-center gap-2.5">
+                <img src="/orignal_logo.png" alt="NexTalk" className="w-8 h-8 object-contain" />
+                <span className="text-lg font-bold text-stone-900">
+                  Nex<span className="text-amber-500">Talk</span>
+                </span>
+              </Link>
+              <p className="mt-3 text-sm text-stone-500 leading-relaxed max-w-xs">
+                Modern, secure, and fast chat for teams and individuals.
+              </p>
+              <div className="mt-4 flex items-center gap-3">
+                <a
+                  href="#"
+                  className="w-9 h-9 rounded-lg bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 hover:text-stone-700 transition-colors"
+                >
+                  <Github className="w-4 h-4" />
+                </a>
+                <a
+                  href="#"
+                  className="w-9 h-9 rounded-lg bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 hover:text-stone-700 transition-colors"
+                >
+                  <Globe className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+
+            {/* Product */}
+            <div>
+              <h4 className="text-sm font-semibold text-stone-900 mb-4">Product</h4>
+              <ul className="space-y-2.5">
+                {["Features", "Security", "Pricing", "Changelog"].map((item) => (
+                  <li key={item}>
+                    <a href="#" className="text-sm text-stone-500 hover:text-stone-700 transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h4 className="text-sm font-semibold text-stone-900 mb-4">Company</h4>
+              <ul className="space-y-2.5">
+                {["About", "Blog", "Careers", "Contact"].map((item) => (
+                  <li key={item}>
+                    <a href="#" className="text-sm text-stone-500 hover:text-stone-700 transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <h4 className="text-sm font-semibold text-stone-900 mb-4">Legal</h4>
+              <ul className="space-y-2.5">
+                {["Privacy Policy", "Terms of Service", "Cookie Policy"].map((item) => (
+                  <li key={item}>
+                    <a href="#" className="text-sm text-stone-500 hover:text-stone-700 transition-colors">
+                      {item}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="mt-10 pt-6 border-t border-stone-200/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-stone-400">
+              &copy; {new Date().getFullYear()} NexTalk. All rights reserved.
+            </p>
+            <p className="text-sm text-stone-400">
+              Built with <span className="text-amber-500">&#9829;</span> for better communication
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default Home;
