@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Github, MessageCircle } from "lucide-react";
 import supabase from "../../utils/supabaseClient";
+import NexTalkLogo from "../../components/NexTalkLogo";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -25,7 +26,7 @@ const Login = () => {
     if (error) {
       setMessage(error.message);
     } else {
-      navigate("/dashboard");
+      navigate("/chat");
     }
     setLoading(false);
   };
@@ -66,11 +67,7 @@ const Login = () => {
 
         <div className="relative z-10 max-w-md text-center">
           <div className="mb-8 flex justify-center">
-            <img
-              src="/orignal_logo.png"
-              alt="NexTalk Logo"
-              className="w-28 h-28 object-contain drop-shadow-2xl"
-            />
+            <NexTalkLogo className="w-28 h-28" animated />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">
             Welcome back to <span className="text-amber-400">NexTalk</span>
@@ -106,11 +103,7 @@ const Login = () => {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-8">
-            <img
-              src="/orignal_logo.png"
-              alt="NexTalk Logo"
-              className="w-16 h-16 object-contain"
-            />
+            <NexTalkLogo className="w-16 h-16" />
           </div>
 
           <div className="mb-8">

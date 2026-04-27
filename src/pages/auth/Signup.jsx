@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Github, User, MessageCircle } from "lucide-react";
 import supabase from "../../utils/supabaseClient";
+import NexTalkLogo from "../../components/NexTalkLogo";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -36,7 +37,7 @@ const Signup = () => {
     } else {
       setMessageType("success");
       setMessage("Account created successfully!");
-      navigate("/dashboard");
+      navigate("/complete-profile");
     }
     setLoading(false);
   };
@@ -83,11 +84,7 @@ const Signup = () => {
 
         <div className="relative z-10 max-w-md text-center">
           <div className="mb-8 flex justify-center">
-            <img
-              src="/orignal_logo.png"
-              alt="NexTalk Logo"
-              className="w-28 h-28 object-contain drop-shadow-2xl"
-            />
+            <NexTalkLogo className="w-28 h-28" animated />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">
             Join <span className="text-amber-400">NexTalk</span> today
@@ -125,11 +122,7 @@ const Signup = () => {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-8">
-            <img
-              src="/orignal_logo.png"
-              alt="NexTalk Logo"
-              className="w-16 h-16 object-contain"
-            />
+            <NexTalkLogo className="w-16 h-16" />
           </div>
 
           <div className="mb-8">

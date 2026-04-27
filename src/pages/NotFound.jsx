@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Home, ArrowLeft, MessageCircle } from "lucide-react";
+import NexTalkLogo from "../components/NexTalkLogo";
 
 const NotFound = () => {
   return (
@@ -13,11 +14,7 @@ const NotFound = () => {
       <div className="relative z-10 text-center max-w-md">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <img
-            src="/orignal_logo.png"
-            alt="NexTalk Logo"
-            className="w-20 h-20 object-contain opacity-80"
-          />
+          <NexTalkLogo className="w-20 h-20" animated />
         </div>
 
         {/* 404 Number */}
@@ -34,11 +31,11 @@ const NotFound = () => {
         {/* Action Buttons */}
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            to="/dashboard"
+            to="/chat"
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-semibold rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all duration-200"
           >
             <Home className="w-5 h-5" />
-            Go to Dashboard
+            Go to Chat
           </Link>
           <Link
             to="/login"
