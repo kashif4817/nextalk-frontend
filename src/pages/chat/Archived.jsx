@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useMatch, useNavigate } from "react-router-dom";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { getAllConversations } from "../../api/conversations/conversation";
+import { normalizeConversation } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
@@ -12,7 +15,6 @@ import { useLongPress } from "../../components/chat/useLongPress";
 const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
   const { t } = useTheme();
   const lp = useLongPress(() => onLongPress(conv));
-  const other = !conv.is_group ? getUser(conv.other_user_id) : null;
 
   return (
     <button
@@ -27,11 +29,7 @@ const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
           : t("hover:bg-white/5", "hover:bg-stone-50")
       }`}
     >
-      <Avatar
-        initials={conv.is_group ? conv.initials : other?.initials}
-        color={conv.is_group ? conv.color : other?.color}
-        size="md"
-      />
+      <Avatar src={conv.avatar_url} initials={conv.initials} color={conv.color} size="md" />
       <div className="flex-1 min-w-0 text-left">
         <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
           {conv.title}
@@ -49,17 +47,31 @@ const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
 
 const Archived = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const navigate = useNavigate();
   const childMatch = useMatch("/chat/archived/:id");
   const activeId = childMatch?.params?.id;
 
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const queryClient = useQueryClient();
+  const { data: conversations = [] } = useQuery({
+    queryKey: ["conversations", user?.id],
+    queryFn: async () => {
+      const res = await getAllConversations();
+      return (res.data.data || [])
+        .map(row => normalizeConversation(row, user.id))
+        .filter(Boolean);
+    },
+    enabled: !!user,
+  });
+
   const [actionConv, setActionConv] = useState(null);
 
-  const archived = conversations.filter((c) => c.is_archived);
+  const archived = conversations.filter(c => c.is_archived);
 
   const restore = (id) =>
-    setConversations((p) => p.map((c) => (c.id === id ? { ...c, is_archived: false } : c)));
+    queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+      prev.map(c => c.id === id ? { ...c, is_archived: false } : c)
+    );
 
   return (
     <ChatShell

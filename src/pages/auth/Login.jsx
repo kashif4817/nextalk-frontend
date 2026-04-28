@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Github, MessageCircle } from "lucide-react";
-import supabase from "../../utils/supabaseClient";
 import NexTalkLogo from "../../components/NexTalkLogo";
+import { loginWithEmail, loginWithGoogle, loginWithGithub } from "../../api/auth/login";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -19,36 +19,22 @@ const Login = () => {
     }
     setLoading(true);
     setMessage("");
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setMessage(error.message);
-    } else {
+    try {
+      await loginWithEmail(email, password);
       navigate("/chat");
+    } catch (err) {
+      setMessage(err.message || "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: "http://localhost:5173/auth/callback",
-      },
-    });
-    if (error) setMessage(error.message);
+  const handleGoogleLogin = () => {
+    loginWithGoogle();
   };
 
-  const handleGithubLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "github",
-      options: {
-        redirectTo: "http://localhost:5173/auth/callback",
-      },
-    });
-    if (error) setMessage(error.message);
+  const handleGithubLogin = () => {
+    loginWithGithub();
   };
 
   const handleKeyDown = (e) => {
@@ -170,9 +156,9 @@ const Login = () => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-medium text-stone-700">Password</label>
-                <button className="text-sm text-amber-600 hover:text-amber-700 font-medium transition-colors">
+                <Link to="/forgot-password" className="text-sm text-amber-600 hover:text-amber-700 font-medium transition-colors">
                   Forgot password?
-                </button>
+                </Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />

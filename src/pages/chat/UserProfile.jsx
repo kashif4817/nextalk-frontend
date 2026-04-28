@@ -1,5 +1,6 @@
-import { useState } from "react";
+﻿import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare,
   UserPlus,
@@ -8,7 +9,6 @@ import {
   ShieldCheck,
   Flag,
   Bell,
-  BellOff,
   Image as ImageIcon,
   Link as LinkIcon,
   FileText,
@@ -18,9 +18,15 @@ import {
   Phone,
   Video,
   MoreVertical,
+  Pencil,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { getUserProfile } from "../../api/users/user";
+import { getContacts, addContact, updateContact, removeContact } from "../../api/contacts/contact";
+import { getBlockedUsers, blockUser, unblockUser } from "../../api/blocks/block";
+import { createOrGetDM } from "../../api/conversations/conversation";
+import { useUser } from "../../context/UserContext";
+import { normalizeUser, normalizeContact, normalizeBlockedUser } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
@@ -29,13 +35,125 @@ import { comingSoon } from "../../utils/toast";
 
 const UserProfile = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const { id } = useParams();
   const navigate = useNavigate();
-  const initial = getUser(id);
-  const [user, setUser] = useState(initial);
-  const [menuOpen, setMenuOpen] = useState(false);
 
-  if (!user) {
+  const queryClient = useQueryClient();
+  const nicknameInputRef = useRef(null);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showContactSheet, setShowContactSheet] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+
+  const results = useQueries({
+    queries: [
+      {
+        queryKey: ["profile", id],
+        queryFn: async () => {
+          const res = await getUserProfile(id);
+          return normalizeUser(res.data.data);
+        },
+        enabled: !!id,
+      },
+      {
+        queryKey: ["contacts", user?.id],
+        queryFn: async () => {
+          const res = await getContacts();
+          return (res.data.data || []).map(normalizeContact).filter(Boolean);
+        },
+        enabled: !!user,
+      },
+      {
+        queryKey: ["blocks"],
+        queryFn: async () => {
+          const res = await getBlockedUsers();
+          return (res.data.data || []).map(normalizeBlockedUser).filter(Boolean);
+        },
+      },
+    ],
+  });
+  const [profileQ, contactsQ, blocksQ] = results;
+
+  const profile = profileQ.data || null;
+  const contacts = contactsQ.data || [];
+  const blocks = blocksQ.data || [];
+
+  const loading = profileQ.isLoading || contactsQ.isLoading || blocksQ.isLoading;
+  const notFound = profileQ.isError || (profileQ.isFetched && !profile);
+
+  const contactRow = contacts.find(c => c.id === id);
+  const isContact = !!contactRow;
+  const contactNickname = contactRow?.nickname || "";
+
+  const blockRow = blocks.find(b => b.id === id);
+  const isBlocked = !!blockRow;
+  const blockRowId = blockRow?.block_row_id || null;
+
+  const startChat = async () => {
+    try {
+      const res = await createOrGetDM(id);
+      navigate(`/chat/${res.data.data.id}`);
+    } catch {
+      navigate("/chat");
+    }
+  };
+
+  const openContactSheet = () => {
+    setNicknameDraft(contactNickname || profile?.display_name || "");
+    setShowContactSheet(true);
+    // Focus the input after sheet opens
+    setTimeout(() => nicknameInputRef.current?.focus(), 80);
+  };
+
+  const saveContact = async () => {
+    const name = nicknameDraft.trim();
+    try {
+      if (isContact) {
+        await updateContact(id, name || null);
+      } else {
+        await addContact(id, name || null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      setShowContactSheet(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRemoveContact = async () => {
+    try {
+      await removeContact(id);
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleBlock = async () => {
+    try {
+      if (isBlocked) {
+        await unblockUser(blockRowId);
+      } else {
+        await blockUser(id);
+      }
+      queryClient.invalidateQueries({ queryKey: ["blocks"] });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <ChatShell active="chats">
+        <div className={`min-h-screen flex items-center justify-center ${t("bg-stone-950", "bg-stone-50")}`}>
+          <div className="w-6 h-6 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+        </div>
+      </ChatShell>
+    );
+  }
+
+  if (notFound || !profile) {
     return (
       <ChatShell active="chats">
         <div className={`min-h-screen flex flex-col items-center justify-center ${t("bg-stone-950 text-stone-300", "bg-stone-50 text-stone-700")}`}>
@@ -47,17 +165,6 @@ const UserProfile = () => {
       </ChatShell>
     );
   }
-
-  const startChat = () => {
-    // Find existing DM or create one (UI only — id will be conv-{userId})
-    const existing = CONVERSATIONS.find((c) => !c.is_group && c.other_user_id === user.id);
-    navigate(existing ? `/chat/${existing.id}` : `/chat/conv-${user.id}`);
-  };
-
-  const toggleContact = () =>
-    setUser((u) => ({ ...u, is_contact: !u.is_contact }));
-  const toggleBlock = () =>
-    setUser((u) => ({ ...u, is_blocked: !u.is_blocked }));
 
   return (
     <ChatShell active="chats">
@@ -77,18 +184,16 @@ const UserProfile = () => {
         }
       />
 
-      {/* Hero */}
       <div className={`flex flex-col items-center pt-6 pb-5 px-4 ${t("bg-stone-900/40", "bg-white")}`}>
-        <Avatar initials={user.initials} color={user.color} size="xl" status={user.status} />
-        <h2 className="mt-3 text-xl font-bold">{user.display_name}</h2>
+        <Avatar src={profile.avatar_url} initials={profile.initials} color={profile.color} size="xl" status={profile.status} />
+        <h2 className="mt-3 text-xl font-bold">{profile.display_name}</h2>
         <p className={`text-sm mt-0.5 ${t("text-stone-400", "text-stone-500")}`}>
-          @{user.username}
+          @{profile.username}
         </p>
-        <p className={`text-xs mt-1 ${user.status === "online" ? "text-green-500" : t("text-stone-500", "text-stone-400")}`}>
-          {user.status === "online" ? "online" : `last seen ${user.last_seen}`}
+        <p className={`text-xs mt-1 ${profile.status === "online" ? "text-green-500" : t("text-stone-500", "text-stone-400")}`}>
+          {profile.status === "online" ? "online" : profile.last_seen ? `last seen ${profile.last_seen}` : "offline"}
         </p>
 
-        {/* Quick actions */}
         <div className="mt-5 grid grid-cols-3 gap-3 w-full max-w-xs">
           <QuickAction icon={MessageSquare} label="Message" onClick={startChat} />
           <QuickAction icon={Phone} label="Audio" onClick={() => comingSoon("Voice calls")} />
@@ -96,41 +201,43 @@ const UserProfile = () => {
         </div>
       </div>
 
-      {/* About */}
       <Section>
-        <Field label="About" value={user.about || "—"} icon={Info} />
-        <Field label="Username" value={`@${user.username}`} icon={AtSign} />
+        {isContact && contactNickname && (
+          <Field label="Contact name" value={contactNickname} icon={UserPlus} />
+        )}
+        <Field label="About" value={profile.about || "—"} icon={Info} />
+        <Field label="Username" value={`@${profile.username}`} icon={AtSign} />
       </Section>
 
-      {/* Media / Links / Docs */}
       <Section title="Media, links, docs">
         <Row icon={ImageIcon} label="Media" hint="0" onClick={() => comingSoon("Media gallery")} />
         <Row icon={LinkIcon} label="Links" hint="0" onClick={() => comingSoon("Shared links")} />
         <Row icon={FileText} label="Docs" hint="0" onClick={() => comingSoon("Shared docs")} />
       </Section>
 
-      {/* Notifications */}
       <Section>
         <Row icon={Bell} label="Mute notifications" hint="Off" onClick={() => comingSoon("Mute settings")} />
         <Row icon={ImageIcon} label="Wallpaper & sound" onClick={() => comingSoon("Custom wallpapers")} />
       </Section>
 
-      {/* Actions */}
       <Section>
+        {isContact ? (
+          <>
+            <ActionButton icon={Pencil} label="Edit contact name" onClick={openContactSheet} />
+            <ActionButton icon={UserMinus} label="Remove from contacts" danger onClick={handleRemoveContact} />
+          </>
+        ) : (
+          <ActionButton icon={UserPlus} label="Add to contacts" onClick={openContactSheet} />
+        )}
         <ActionButton
-          icon={user.is_contact ? UserMinus : UserPlus}
-          label={user.is_contact ? "Remove from contacts" : "Add to contacts"}
-          onClick={toggleContact}
-        />
-        <ActionButton
-          icon={user.is_blocked ? ShieldCheck : ShieldOff}
-          label={user.is_blocked ? `Unblock ${user.display_name}` : `Block ${user.display_name}`}
-          danger={!user.is_blocked}
+          icon={isBlocked ? ShieldCheck : ShieldOff}
+          label={isBlocked ? `Unblock ${contactNickname || profile.display_name}` : `Block ${contactNickname || profile.display_name}`}
+          danger={!isBlocked}
           onClick={toggleBlock}
         />
         <ActionButton
           icon={Flag}
-          label={`Report ${user.display_name}`}
+          label={`Report ${contactNickname || profile.display_name}`}
           danger
           onClick={() => comingSoon("Reporting")}
         />
@@ -138,10 +245,49 @@ const UserProfile = () => {
 
       <div className="h-12" />
 
-      <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={user.display_name}>
-        <SheetItem icon={UserPlus} label={user.is_contact ? "Remove from contacts" : "Add to contacts"} onClick={() => { toggleContact(); setMenuOpen(false); }} />
-        <SheetItem icon={ShieldOff} label={user.is_blocked ? "Unblock" : "Block"} danger onClick={() => { toggleBlock(); setMenuOpen(false); }} />
+      {/* 3-dot menu */}
+      <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title={profile.display_name}>
+        {isContact ? (
+          <>
+            <SheetItem icon={Pencil} label="Edit contact name" onClick={() => { setMenuOpen(false); openContactSheet(); }} />
+            <SheetItem icon={UserMinus} label="Remove from contacts" danger onClick={() => { setMenuOpen(false); handleRemoveContact(); }} />
+          </>
+        ) : (
+          <SheetItem icon={UserPlus} label="Add to contacts" onClick={() => { setMenuOpen(false); openContactSheet(); }} />
+        )}
+        <SheetItem icon={ShieldOff} label={isBlocked ? "Unblock" : "Block"} danger onClick={() => { toggleBlock(); setMenuOpen(false); }} />
         <SheetItem icon={Flag} label="Report" danger onClick={() => setMenuOpen(false)} />
+      </BottomSheet>
+
+      {/* Add / edit contact name sheet */}
+      <BottomSheet
+        open={showContactSheet}
+        onClose={() => setShowContactSheet(false)}
+        title={isContact ? "Edit contact name" : "Add to contacts"}
+      >
+        <div className="px-5 py-3 space-y-3">
+          <p className={`text-xs ${t("text-stone-400", "text-stone-500")}`}>
+            This name is only visible to you.
+          </p>
+          <input
+            ref={nicknameInputRef}
+            value={nicknameDraft}
+            onChange={(e) => setNicknameDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && saveContact()}
+            placeholder="Contact name"
+            className={`w-full px-3 py-2.5 rounded-xl text-sm outline-none border transition-colors ${t(
+              "bg-stone-800 border-white/10 text-stone-100 placeholder-stone-500 focus:border-amber-500/50",
+              "bg-stone-50 border-stone-200 text-stone-900 placeholder-stone-400 focus:border-amber-400"
+            )}`}
+          />
+          <button
+            onClick={saveContact}
+            disabled={!nicknameDraft.trim()}
+            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-opacity"
+          >
+            {isContact ? "Save changes" : "Add contact"}
+          </button>
+        </div>
       </BottomSheet>
     </div>
     </ChatShell>

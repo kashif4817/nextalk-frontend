@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+﻿import { useState, useEffect, useRef, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Send,
@@ -91,7 +91,7 @@ const directMessages = [
     id: "yuki",
     name: "Yuki Tanaka",
     initials: "YT",
-    color: "from-amber-400 to-orange-500",
+    color: "from-amber-400 to-orange-400",
     status: "online",
     lastMessage: "Coffee break? ☕",
     lastSeen: "10:31 AM",
@@ -199,7 +199,7 @@ const initialMessagesByChat = {
       id: 3,
       author: "You",
       initials: "Y",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "10:28 AM",
       text: "Deploying to staging now. Should be live in 2 minutes!",
       reactions: [],
@@ -222,7 +222,7 @@ const initialMessagesByChat = {
       id: 1,
       author: "Yuki Tanaka",
       initials: "YT",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "9:02 AM",
       text: "Good morning everyone! ☀️",
       reactions: [{ emoji: "👋", count: 5 }],
@@ -232,7 +232,7 @@ const initialMessagesByChat = {
       id: 2,
       author: "You",
       initials: "Y",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "9:05 AM",
       text: "Morning! Standup in 25 mins.",
       reactions: [],
@@ -257,7 +257,7 @@ const initialMessagesByChat = {
       id: 1,
       author: "Yuki Tanaka",
       initials: "YT",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "10:31 AM",
       text: "Anyone tried the new place on 3rd street? 🍜",
       reactions: [],
@@ -291,7 +291,7 @@ const initialMessagesByChat = {
       id: 2,
       author: "You",
       initials: "Y",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "10:22 AM",
       text: "Yep — give me 5 mins to wrap something up.",
       reactions: [],
@@ -340,7 +340,7 @@ const initialMessagesByChat = {
       id: 1,
       author: "Yuki Tanaka",
       initials: "YT",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time: "10:31 AM",
       text: "Coffee break? ☕",
       reactions: [],
@@ -455,7 +455,7 @@ const Chat = () => {
       id: Date.now(),
       author: "You",
       initials: "Y",
-      color: "from-amber-400 to-orange-500",
+      color: "from-amber-400 to-orange-400",
       time,
       text,
       reactions: [],
@@ -553,7 +553,7 @@ const Chat = () => {
             <div className={`hidden sm:block w-px h-6 mx-1 ${t("bg-white/10", "bg-stone-200")}`} />
             <div className="flex items-center gap-2">
               <div className="relative">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center">
                   <span className="text-white text-xs font-bold">Y</span>
                 </div>
                 <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 bg-green-400 ${t("border-stone-950", "border-white")}`} />
@@ -758,7 +758,7 @@ const Chat = () => {
               )}`}>
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center">
                       <span className="text-white text-lg font-bold">Y</span>
                     </div>
                     <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-green-400 border-2 ${t("border-stone-900", "border-white")}`} />

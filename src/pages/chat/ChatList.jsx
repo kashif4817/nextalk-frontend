@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -20,7 +21,9 @@ import {
   CircleUser,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { getAllConversations } from "../../api/conversations/conversation";
+import { normalizeConversation } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
 import { useLongPress } from "../../components/chat/useLongPress";
@@ -35,13 +38,7 @@ const FILTERS = [
 
 const ChatRow = ({ conv, onLongPress, onClick }) => {
   const { t } = useTheme();
-  const lp = useLongPress(() => onLongPress(conv));
-
-  // Resolve avatar from other user (DM) or group
-  const other = !conv.is_group ? getUser(conv.other_user_id) : null;
-  const initials = conv.is_group ? conv.initials : other?.initials;
-  const color = conv.is_group ? conv.color : other?.color;
-  const status = !conv.is_group ? other?.status : null;
+  const lp = useLongPress((e) => onLongPress(conv, e));
 
   return (
     <button
@@ -55,7 +52,7 @@ const ChatRow = ({ conv, onLongPress, onClick }) => {
         "hover:bg-stone-50 active:bg-stone-100"
       )}`}
     >
-      <Avatar initials={initials} color={color} size="md" status={status} />
+      <Avatar src={conv.avatar_url} initials={conv.initials} color={conv.color} size="md" status={conv.status} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
@@ -103,9 +100,21 @@ const ChatRow = ({ conv, onLongPress, onClick }) => {
 
 const ChatList = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const navigate = useNavigate();
 
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const queryClient = useQueryClient();
+  const { data: conversations = [] } = useQuery({
+    queryKey: ["conversations", user?.id],
+    queryFn: async () => {
+      const res = await getAllConversations();
+      return (res.data.data || [])
+        .map(row => normalizeConversation(row, user.id))
+        .filter(Boolean);
+    },
+    enabled: !!user,
+  });
+
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -137,7 +146,9 @@ const ChatList = () => {
   const archivedCount = conversations.filter((c) => c.is_archived).length;
 
   const updateConv = (id, patch) =>
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
 
   const handleAction = (action) => {
     if (!actionConv) return;
@@ -148,7 +159,10 @@ const ChatList = () => {
     if (action === "unmute") updateConv(id, { is_muted: false });
     if (action === "archive") updateConv(id, { is_archived: true });
     if (action === "read") updateConv(id, { unread_count: 0 });
-    if (action === "delete") setConversations((p) => p.filter((c) => c.id !== id));
+    if (action === "delete")
+      queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+        prev.filter((c) => c.id !== id)
+      );
     setActionConv(null);
   };
 
@@ -278,7 +292,12 @@ const ChatList = () => {
                 key={conv.id}
                 conv={conv}
                 onClick={(c) => navigate(`/chat/${c.id}`)}
-                onLongPress={(c) => setActionConv(c)}
+                onLongPress={(c, e) => {
+                  const pos = window.innerWidth >= 640
+                    ? { x: e.clientX, y: e.clientY }
+                    : null;
+                  setActionConv({ ...c, _pos: pos });
+                }}
               />
             ))}
           </div>
@@ -288,7 +307,7 @@ const ChatList = () => {
       {/* ── Floating Action Button ── */}
       <button
         onClick={() => navigate("/chat/new")}
-        className="fixed bottom-20 md:bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer z-20"
+        className="fixed bottom-20 md:bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer z-20"
       >
         <MessageSquarePlus className="w-6 h-6" />
       </button>
@@ -309,6 +328,7 @@ const ChatList = () => {
         open={!!actionConv}
         onClose={() => setActionConv(null)}
         title={actionConv?.title}
+        position={actionConv?._pos}
       >
         {actionConv?.is_pinned ? (
           <SheetItem icon={Pin} label="Unpin chat" onClick={() => handleAction("unpin")} />
@@ -347,7 +367,7 @@ const EmptyState = ({ onStart }) => {
       </p>
       <button
         onClick={onStart}
-        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
+        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
       >
         <Plus className="w-4 h-4" />
         Start a new chat

@@ -1,40 +1,50 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Search, UserPlus, X } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { getContacts } from "../../api/contacts/contact";
+import { normalizeContact } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
 
 const Contacts = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
-  const contacts = useMemo(() => ALL_USERS.filter((u) => u.is_contact), []);
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", user?.id],
+    queryFn: async () => {
+      const res = await getContacts();
+      return (res.data.data || []).map(normalizeContact).filter(Boolean);
+    },
+    enabled: !!user,
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return contacts;
     return contacts.filter(
       (u) =>
-        u.display_name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q)
+        u.display_name?.toLowerCase().includes(q) ||
+        u.username?.toLowerCase().includes(q)
     );
   }, [query, contacts]);
 
-  // Group contacts alphabetically
   const grouped = useMemo(() => {
     const map = {};
     filtered.forEach((u) => {
-      const key = u.display_name[0].toUpperCase();
+      const key = (u.display_name?.[0] || "?").toUpperCase();
       if (!map[key]) map[key] = [];
       map[key].push(u);
     });
     return Object.keys(map)
       .sort()
-      .map((letter) => ({ letter, users: map[letter].sort((a, b) => a.display_name.localeCompare(b.display_name)) }));
+      .map((letter) => ({ letter, users: map[letter].sort((a, b) => a.display_name?.localeCompare(b.display_name)) }));
   }, [filtered]);
 
   return (
@@ -102,7 +112,7 @@ const Contacts = () => {
                   onClick={() => navigate(`/chat/profile/${u.id}`)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer ${t("hover:bg-white/5", "hover:bg-stone-100")}`}
                 >
-                  <Avatar initials={u.initials} color={u.color} size="md" status={u.status} />
+                  <Avatar src={u.avatar_url} initials={u.initials} color={u.color} size="md" status={u.status} />
                   <div className="flex-1 text-left min-w-0">
                     <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
                       {u.display_name}

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Github, User, MessageCircle } from "lucide-react";
-import supabase from "../../utils/supabaseClient";
 import NexTalkLogo from "../../components/NexTalkLogo";
+import { signupWithEmail, loginWithGoogle, loginWithGithub } from "../../api/auth/login";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -22,51 +22,26 @@ const Signup = () => {
     }
     setLoading(true);
     setMessage("");
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: name,
-        },
-      },
-    });
-    if (error) {
-      setMessageType("error");
-      setMessage(error.message);
-    } else {
+    try {
+      const data = await signupWithEmail(name, email, password);
       setMessageType("success");
-      setMessage("Account created successfully!");
-      navigate("/complete-profile");
-    }
-    setLoading(false);
-  };
-
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: "http://localhost:5173/auth/callback",
-      },
-    });
-    if (error) {
+      if (data.session) {
+        setMessage("Account created successfully!");
+        navigate("/complete-profile");
+      } else {
+        setMessage("Check your email to confirm your account before signing in.");
+      }
+    } catch (err) {
       setMessageType("error");
-      setMessage(error.message);
+      setMessage(err.message || "Signup failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGithubLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "github",
-      options: {
-        redirectTo: "http://localhost:5173/auth/callback",
-      },
-    });
-    if (error) {
-      setMessageType("error");
-      setMessage(error.message);
-    }
-  };
+  const handleGoogleLogin = () => loginWithGoogle();
+
+  const handleGithubLogin = () => loginWithGithub();
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleSignup();

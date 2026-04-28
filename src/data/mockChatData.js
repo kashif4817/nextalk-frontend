@@ -1,4 +1,4 @@
-// Mock data for NexTalk chat UI
+﻿// Mock data for NexTalk chat UI
 // Mirrors the v1.0 schema shape so swapping in real API later is mechanical.
 
 export const ME = {
@@ -8,7 +8,7 @@ export const ME = {
   avatar_url: null,
   about: "Building NexTalk 🚀",
   initials: "Y",
-  color: "from-amber-400 to-orange-500",
+  color: "from-amber-400 to-orange-400",
   last_seen_privacy: "everyone",
   profile_photo_privacy: "everyone",
   about_privacy: "everyone",
@@ -21,7 +21,7 @@ export const ALL_USERS = [
   { id: "alex", username: "alexr", display_name: "Alex Rivera", initials: "AR", color: "from-blue-400 to-indigo-500", status: "online", about: "Senior Designer @ Layer", last_seen: "online", is_contact: true, is_blocked: false },
   { id: "priya", username: "priyas", display_name: "Priya Sharma", initials: "PS", color: "from-purple-400 to-violet-500", status: "away", about: "Frontend engineer 🌸", last_seen: "9:48 AM", is_contact: true, is_blocked: false },
   { id: "marcus", username: "marcusl", display_name: "Marcus Lee", initials: "ML", color: "from-rose-400 to-pink-500", status: "offline", about: "Backend dev · Coffee → Code", last_seen: "Yesterday at 11:42 PM", is_contact: true, is_blocked: false },
-  { id: "yuki", username: "yukit", display_name: "Yuki Tanaka", initials: "YT", color: "from-amber-400 to-orange-500", status: "online", about: "DevRel · Tokyo", last_seen: "online", is_contact: false, is_blocked: false },
+  { id: "yuki", username: "yukit", display_name: "Yuki Tanaka", initials: "YT", color: "from-amber-400 to-orange-400", status: "online", about: "DevRel · Tokyo", last_seen: "online", is_contact: false, is_blocked: false },
   { id: "emma", username: "emmat", display_name: "Emma Thompson", initials: "ET", color: "from-rose-400 to-pink-500", status: "online", about: "Product Designer at Figma", last_seen: "online", is_contact: false, is_blocked: false },
   { id: "david", username: "dkim", display_name: "David Kim", initials: "DK", color: "from-blue-400 to-cyan-500", status: "online", about: "Senior Engineer at Stripe", last_seen: "online", is_contact: false, is_blocked: false },
   { id: "olivia", username: "oliviap", display_name: "Olivia Park", initials: "OP", color: "from-emerald-400 to-green-500", status: "away", about: "Product Manager at Linear", last_seen: "12 min ago", is_contact: false, is_blocked: false },

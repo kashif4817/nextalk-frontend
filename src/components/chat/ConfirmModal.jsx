@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { AlertTriangle, Info, LogOut, Trash2 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -17,7 +17,7 @@ const VARIANTS = {
     iconBgLight: "bg-amber-50",
     iconColor: "text-amber-500",
     confirmBtn:
-      "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/30",
+      "bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 shadow-amber-500/30",
   },
   info: {
     icon: Info,

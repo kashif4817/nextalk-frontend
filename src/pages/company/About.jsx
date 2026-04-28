@@ -1,4 +1,4 @@
-import { Heart, Target, Users, Zap } from "lucide-react";
+﻿import { Heart, Target, Users, Zap } from "lucide-react";
 import StaticPageLayout from "../../components/StaticPageLayout";
 
 const values = [
@@ -25,7 +25,7 @@ const values = [
 ];
 
 const team = [
-  { name: "Alex Chen", role: "Co-Founder & CEO", initials: "AC", color: "from-amber-400 to-orange-500" },
+  { name: "Alex Chen", role: "Co-Founder & CEO", initials: "AC", color: "from-amber-400 to-orange-400" },
   { name: "Jordan Blake", role: "Co-Founder & CTO", initials: "JB", color: "from-blue-400 to-indigo-500" },
   { name: "Sara Okonkwo", role: "Head of Design", initials: "SO", color: "from-emerald-400 to-teal-500" },
   { name: "Raj Patel", role: "Head of Engineering", initials: "RP", color: "from-purple-400 to-violet-500" },

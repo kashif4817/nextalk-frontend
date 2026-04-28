@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { Check } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useWallpaper } from "../../context/WallpaperContext";
@@ -33,7 +33,7 @@ const ChatWallpaper = () => {
             <div className="self-start max-w-[70%] px-3 py-1.5 rounded-2xl rounded-bl-md bg-white/95 text-stone-900 text-xs shadow-sm">
               Hey! How's the new wallpaper?
             </div>
-            <div className="self-end max-w-[70%] px-3 py-1.5 rounded-2xl rounded-br-md bg-gradient-to-br from-amber-500 to-orange-500 text-white text-xs shadow-sm">
+            <div className="self-end max-w-[70%] px-3 py-1.5 rounded-2xl rounded-br-md bg-gradient-to-br from-amber-400 to-orange-400 text-white text-xs shadow-sm">
               Looks great 🔥
             </div>
           </div>

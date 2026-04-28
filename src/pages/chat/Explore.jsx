@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Search, X, Sparkles, MessageSquare, UserPlus, TrendingUp } from "lucide-react";
+import { Search, X, Sparkles, MessageSquare, Users } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, BLOCKED_USER_IDS } from "../../data/mockChatData";
+import { searchUsers, getAllUsers } from "../../api/users/user";
+import { normalizeUser } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
@@ -11,33 +13,50 @@ const Explore = () => {
   const { t } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  const allUsers = useMemo(
-    () => ALL_USERS.filter((u) => !BLOCKED_USER_IDS.includes(u.id)),
-    []
-  );
+  // Debounce the search input so we don't fire a query on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return allUsers;
-    return allUsers.filter(
-      (u) =>
-        u.display_name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q) ||
-        u.about?.toLowerCase().includes(q)
-    );
-  }, [query, allUsers]);
+  const { data: allUsers = [], isLoading: loading } = useQuery({
+    queryKey: ["all-users"],
+    queryFn: async () => {
+      const res = await getAllUsers();
+      return (res.data.data || []).map(normalizeUser).filter(Boolean);
+    },
+    staleTime: 2 * 60_000,
+  });
 
-  const suggestions = filtered.filter((u) => !u.is_contact).slice(0, 8);
-  const trending = filtered.filter((u) => u.status === "online").slice(0, 8);
-  const others = filtered;
+  const { data: searchResults = [] } = useQuery({
+    queryKey: ["search-users", debouncedQuery],
+    queryFn: async () => {
+      const res = await searchUsers(debouncedQuery);
+      return (res.data.data || []).map(normalizeUser).filter(Boolean);
+    },
+    enabled: !!debouncedQuery.trim(),
+  });
+
+  // Random recommended — shuffled once when allUsers loads, stable for the session
+  const recommended = useMemo(() => {
+    if (allUsers.length === 0) return [];
+    const shuffled = [...allUsers].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, Math.min(6, shuffled.length));
+  }, [allUsers]);
+
+  const recommendedIds = useMemo(() => new Set(recommended.map((u) => u.id)), [recommended]);
+  const remainingUsers = useMemo(() => allUsers.filter((u) => !recommendedIds.has(u.id)), [allUsers, recommendedIds]);
+
+  const isSearching = debouncedQuery.trim().length > 0;
 
   return (
     <ChatShell active="explore" fullWidth>
       <div className={`min-h-screen ${t("text-stone-100", "text-stone-900")}`}>
         <ChatTopBar
           title="Explore"
-          subtitle={`Discover ${allUsers.length} people on NexTalk`}
+          subtitle="Discover people on NexTalk"
         />
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
@@ -59,62 +78,61 @@ const Explore = () => {
               )}`}
             />
             {query && (
-              <button
-                onClick={() => setQuery("")}
-                className={t("text-stone-500", "text-stone-400")}
-              >
+              <button onClick={() => setQuery("")} className={t("text-stone-500", "text-stone-400")}>
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
             <div className="py-20 text-center">
-              <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
-                No users match "{query}".
-              </p>
+              <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>Loading people…</p>
             </div>
-          ) : (
-            <>
-              {!query && suggestions.length > 0 && (
-                <Section title="Suggested for you" icon={Sparkles}>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    {suggestions.map((u) => (
-                      <SuggestCard
-                        key={u.id}
-                        user={u}
-                        onClick={() => navigate(`/chat/profile/${u.id}`)}
-                      />
-                    ))}
-                  </div>
-                </Section>
-              )}
-
-              {!query && trending.length > 0 && (
-                <Section title="Active now" icon={TrendingUp}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {trending.map((u) => (
-                      <UserCard
-                        key={u.id}
-                        user={u}
-                        onClick={() => navigate(`/chat/profile/${u.id}`)}
-                      />
-                    ))}
-                  </div>
-                </Section>
-              )}
-
-              <Section title={query ? "Results" : "All people"}>
+          ) : isSearching ? (
+            /* ── Search results ── */
+            searchResults.length === 0 ? (
+              <div className="py-20 text-center">
+                <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
+                  No users match "{query}".
+                </p>
+              </div>
+            ) : (
+              <Section title="Results" icon={Search}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {others.map((u) => (
-                    <UserCard
-                      key={u.id}
-                      user={u}
-                      onClick={() => navigate(`/chat/profile/${u.id}`)}
-                    />
+                  {searchResults.map((u) => (
+                    <UserCard key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
                   ))}
                 </div>
               </Section>
+            )
+          ) : (
+            /* ── Discovery view ── */
+            <>
+              {recommended.length > 0 && (
+                <Section title="Recommended for you" icon={Sparkles}>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {recommended.map((u) => (
+                      <SuggestCard key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {remainingUsers.length > 0 ? (
+                <Section title="Everyone on NexTalk" icon={Users}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {remainingUsers.map((u) => (
+                      <UserCard key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
+                    ))}
+                  </div>
+                </Section>
+              ) : (
+                <div className="py-20 text-center">
+                  <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
+                    No other users yet. Be the first to invite someone!
+                  </p>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -129,12 +147,7 @@ const Section = ({ title, icon: Icon, children }) => {
     <div className="mt-6">
       <div className="pb-3 flex items-center gap-2">
         {Icon && <Icon className="w-4 h-4 text-amber-500" />}
-        <p
-          className={`text-xs font-semibold uppercase tracking-wider ${t(
-            "text-stone-400",
-            "text-stone-500"
-          )}`}
-        >
+        <p className={`text-xs font-semibold uppercase tracking-wider ${t("text-stone-400", "text-stone-500")}`}>
           {title}
         </p>
       </div>
@@ -155,12 +168,7 @@ const SuggestCard = ({ user, onClick }) => {
     >
       <Avatar initials={user.initials} color={user.color} size="lg" status={user.status} />
       <div className="text-center min-w-0 w-full">
-        <p
-          className={`text-xs font-semibold truncate ${t(
-            "text-stone-100",
-            "text-stone-900"
-          )}`}
-        >
+        <p className={`text-xs font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
           {user.display_name}
         </p>
         <p className={`text-[10px] truncate ${t("text-stone-400", "text-stone-500")}`}>
@@ -186,25 +194,14 @@ const UserCard = ({ user, onClick }) => {
     >
       <Avatar initials={user.initials} color={user.color} size="md" status={user.status} />
       <div className="flex-1 text-left min-w-0">
-        <p
-          className={`text-sm font-semibold truncate ${t(
-            "text-stone-100",
-            "text-stone-900"
-          )}`}
-        >
+        <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
           {user.display_name}
         </p>
         <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
           {user.about || `@${user.username}`}
         </p>
       </div>
-      {user.is_contact ? (
-        <MessageSquare className="w-4 h-4 text-amber-500 shrink-0" />
-      ) : (
-        <UserPlus
-          className={`w-4 h-4 shrink-0 ${t("text-stone-500", "text-stone-400")}`}
-        />
-      )}
+      <MessageSquare className="w-4 h-4 text-amber-500 shrink-0" />
     </button>
   );
 };

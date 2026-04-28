@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, ShieldOff, Check } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ME } from "../../data/mockChatData";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
@@ -25,10 +24,10 @@ const PrivacySettings = () => {
   const { t } = useTheme();
   const navigate = useNavigate();
   const [privacy, setPrivacy] = useState({
-    last_seen_privacy: ME.last_seen_privacy,
-    profile_photo_privacy: ME.profile_photo_privacy,
-    about_privacy: ME.about_privacy,
-    read_receipts_privacy: ME.read_receipts_privacy,
+    last_seen_privacy: "everyone",
+    profile_photo_privacy: "everyone",
+    about_privacy: "everyone",
+    read_receipts_privacy: "everyone",
   });
   const [editing, setEditing] = useState(null);
 

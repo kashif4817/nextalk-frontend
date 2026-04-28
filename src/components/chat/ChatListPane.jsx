@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Search,
@@ -18,9 +19,16 @@ import {
   MessageSquarePlus,
   ShieldOff,
   CircleUser,
+  Sparkles,
 } from "lucide-react";
+
+const AI_BOT_ID = "ai-bot";
 import { useTheme } from "../../context/ThemeContext";
-import { CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { getAllConversations } from "../../api/conversations/conversation";
+import { getContacts } from "../../api/contacts/contact";
+import { normalizeConversation, normalizeContact, formatTime } from "../../utils/formatters";
+import { socket } from "../../lib/socket";
 import Avatar from "./Avatar";
 import BottomSheet, { SheetItem } from "./BottomSheet";
 import DropdownMenu, { MenuItem } from "./DropdownMenu";
@@ -36,12 +44,11 @@ const FILTERS = [
 
 const ChatRow = ({ conv, onLongPress, onClick, active }) => {
   const { t } = useTheme();
-  const lp = useLongPress(() => onLongPress(conv));
+  const lp = useLongPress((e) => onLongPress(conv, e));
 
-  const other = !conv.is_group ? getUser(conv.other_user_id) : null;
-  const initials = conv.is_group ? conv.initials : other?.initials;
-  const color = conv.is_group ? conv.color : other?.color;
-  const status = !conv.is_group ? other?.status : null;
+  const initials = conv.initials;
+  const color = conv.color;
+  const status = conv.status;
 
   return (
     <button
@@ -56,7 +63,7 @@ const ChatRow = ({ conv, onLongPress, onClick, active }) => {
           : t("hover:bg-white/5 active:bg-white/10", "hover:bg-stone-50 active:bg-stone-100")
       }`}
     >
-      <Avatar initials={initials} color={color} size="md" status={status} />
+      <Avatar src={conv.avatar_url} initials={initials} color={color} size="md" status={status} />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
@@ -105,17 +112,70 @@ const ChatRow = ({ conv, onLongPress, onClick, active }) => {
 // The actual chat list column. Used standalone on mobile, embedded inside ChatHome split view on desktop.
 const ChatListPane = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const navigate = useNavigate();
   const { id: activeChatId } = useParams();
 
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const queryClient = useQueryClient();
+  const { data: conversations = [] } = useQuery({
+    queryKey: ["conversations", user?.id],
+    queryFn: async () => {
+      const res = await getAllConversations();
+      return (res.data.data || [])
+        .map(row => normalizeConversation(row, user.id))
+        .filter(Boolean);
+    },
+    enabled: !!user,
+  });
+
+  // Contacts — used to override DM titles with the user's saved contact name
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", user?.id],
+    queryFn: async () => {
+      const res = await getContacts();
+      return (res.data.data || []).map(normalizeContact).filter(Boolean);
+    },
+    enabled: !!user,
+  });
+  const nicknameMap = useMemo(() => {
+    const map = new Map();
+    for (const c of contacts) {
+      if (c.id && c.nickname) map.set(c.id, c.nickname);
+    }
+    return map;
+  }, [contacts]);
+  // Real-time: increment unread count and update last message when a new message arrives
+  useEffect(() => {
+    const handleNewMessage = (msg) => {
+      queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+        prev.map((c) => {
+          if (c.id !== msg.conversation_id) return c;
+          return {
+            ...c,
+            last_message: { text: msg.content, time: formatTime(msg.created_at) },
+            last_message_at: msg.created_at,
+            unread_count: c.id !== activeChatId ? (c.unread_count || 0) + 1 : c.unread_count,
+          };
+        })
+      );
+    };
+    socket.on("message:new", handleNewMessage);
+    return () => socket.off("message:new", handleNewMessage);
+  }, [queryClient, user?.id, activeChatId]);
+
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionConv, setActionConv] = useState(null);
 
   const visible = useMemo(() => {
-    let list = conversations.filter((c) => !c.is_archived);
+    let list = conversations
+      .filter((c) => !c.is_archived)
+      .map((c) =>
+        !c.is_group && c.other_user_id && nicknameMap.has(c.other_user_id)
+          ? { ...c, title: nicknameMap.get(c.other_user_id) }
+          : c
+      );
     if (filter === "unread") list = list.filter((c) => c.unread_count > 0);
     if (filter === "groups") list = list.filter((c) => c.is_group);
     if (filter === "pinned") list = list.filter((c) => c.is_pinned);
@@ -132,12 +192,14 @@ const ChatListPane = () => {
       if (!a.is_pinned && b.is_pinned) return 1;
       return new Date(b.last_message_at) - new Date(a.last_message_at);
     });
-  }, [conversations, filter, search]);
+  }, [conversations, filter, search, nicknameMap]);
 
   const archivedCount = conversations.filter((c) => c.is_archived).length;
 
   const updateConv = (id, patch) =>
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
 
   const handleAction = (action) => {
     if (!actionConv) return;
@@ -148,7 +210,10 @@ const ChatListPane = () => {
     if (action === "unmute") updateConv(id, { is_muted: false });
     if (action === "archive") updateConv(id, { is_archived: true });
     if (action === "read") updateConv(id, { unread_count: 0 });
-    if (action === "delete") setConversations((p) => p.filter((c) => c.id !== id));
+    if (action === "delete")
+      queryClient.setQueryData(["conversations", user?.id], (prev = []) =>
+        prev.filter((c) => c.id !== id)
+      );
     setActionConv(null);
   };
 
@@ -245,6 +310,59 @@ const ChatListPane = () => {
         </div>
       </header>
 
+      {/* ── Pinned NexTalk AI entry — always at the top, no DB row ── */}
+      {!search && (
+        <div className="px-2 pt-2 pb-1">
+          <button
+            onClick={() => navigate(`/chat/${AI_BOT_ID}`)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all text-left relative overflow-hidden ${
+              activeChatId === AI_BOT_ID
+                ? t(
+                    "bg-amber-500/[0.08] ring-1 ring-amber-500/20",
+                    "bg-amber-50/60 ring-1 ring-amber-200/70"
+                  )
+                : t(
+                    "bg-gradient-to-r from-amber-500/[0.05] to-transparent hover:from-amber-500/[0.08] hover:to-amber-500/[0.02]",
+                    "bg-gradient-to-r from-amber-50/70 to-orange-50/30 hover:from-amber-50 hover:to-orange-50/50"
+                  )
+            }`}
+          >
+            <div className="relative shrink-0">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center shadow-md shadow-amber-500/40">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 ${t("border-stone-950", "border-white")}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-sm font-semibold truncate ${t(
+                  "text-stone-100",
+                  "text-stone-900"
+                )}`}
+              >
+                NexTalk AI
+              </p>
+              <p
+                className={`text-[11px] truncate mt-0.5 ${t(
+                  "text-amber-300/80",
+                  "text-amber-700/80"
+                )}`}
+              >
+                Ask me anything · Powered by Kashif
+              </p>
+            </div>
+            <span
+              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${t(
+                "bg-amber-500/20 text-amber-300",
+                "bg-amber-500 text-white"
+              )}`}
+            >
+              AI
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* ── Archived banner (matched padding with chat rows) ── */}
       {archivedCount > 0 && filter === "all" && !search && (
         <button
@@ -289,7 +407,12 @@ const ChatListPane = () => {
                 conv={conv}
                 active={activeChatId === conv.id}
                 onClick={(c) => navigate(`/chat/${c.id}`)}
-                onLongPress={(c) => setActionConv(c)}
+                onLongPress={(c, e) => {
+                  const pos = window.innerWidth >= 640
+                    ? { x: e.clientX, y: e.clientY }
+                    : null;
+                  setActionConv({ ...c, _pos: pos });
+                }}
               />
             ))}
           </div>
@@ -299,13 +422,13 @@ const ChatListPane = () => {
       {/* ── FAB (mobile only) ── */}
       <button
         onClick={() => navigate("/chat/explore")}
-        className="fixed md:hidden bottom-20 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer z-20"
+        className="fixed md:hidden bottom-20 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-lg shadow-amber-500/30 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer z-20"
       >
         <MessageSquarePlus className="w-6 h-6" />
       </button>
 
       {/* ── Long-press conv menu ── */}
-      <BottomSheet open={!!actionConv} onClose={() => setActionConv(null)} title={actionConv?.title}>
+      <BottomSheet open={!!actionConv} onClose={() => setActionConv(null)} title={actionConv?.title} position={actionConv?._pos}>
         {actionConv?.is_pinned ? (
           <SheetItem icon={Pin} label="Unpin chat" onClick={() => handleAction("unpin")} />
         ) : (
@@ -341,7 +464,7 @@ const EmptyState = ({ onStart }) => {
       </p>
       <button
         onClick={onStart}
-        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
+        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
       >
         <Plus className="w-4 h-4" />
         Explore people

@@ -1,4 +1,4 @@
-import { Lock, MessageSquarePlus } from "lucide-react";
+﻿import { Lock, MessageSquarePlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import NexTalkLogo from "../../components/NexTalkLogo";
@@ -25,7 +25,7 @@ const ChatWelcome = () => {
       </p>
       <button
         onClick={() => navigate("/chat/explore")}
-        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
+        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition-all cursor-pointer"
       >
         <MessageSquarePlus className="w-4 h-4" />
         Find people to chat with

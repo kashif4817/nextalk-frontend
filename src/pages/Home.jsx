@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import {
   MessageCircle,
   Shield,
@@ -125,7 +125,7 @@ const testimonials = [
     role: "Product Manager at Vercel",
     text: "NexTalk replaced three different tools for us. Real-time messaging, file sharing, and video calls — all in one place. Our team productivity jumped 40%.",
     avatar: "SC",
-    color: "from-amber-400 to-orange-500",
+    color: "from-amber-400 to-orange-400",
   },
   {
     name: "Alex Rivera",
@@ -449,7 +449,7 @@ const Home = () => {
           )}`}>
             <div className="flex items-center gap-2.5">
               <div className="relative">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center">
                   <Bell className="w-3.5 h-3.5 text-white" />
                 </div>
                 <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-stone-900" />
@@ -515,7 +515,7 @@ const Home = () => {
               <div className="flex items-center gap-3">
                 <div className="flex -space-x-2.5">
                   {[
-                    { bg: "bg-gradient-to-br from-amber-400 to-orange-500",  letter: "K" },
+                    { bg: "bg-gradient-to-br from-amber-400 to-orange-400",  letter: "K" },
                     { bg: "bg-gradient-to-br from-blue-400 to-indigo-500",   letter: "A" },
                     { bg: "bg-gradient-to-br from-emerald-400 to-teal-500",  letter: "S" },
                     { bg: "bg-gradient-to-br from-rose-400 to-pink-500",     letter: "R" },
@@ -710,7 +710,7 @@ const Home = () => {
                       </div>
 
                       <div className="flex items-start gap-3 animate-slide-in-right delay-400">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center shrink-0">
                           <span className="text-white text-[10px] font-bold">Y</span>
                         </div>
                         <div>

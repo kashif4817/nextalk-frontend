@@ -1,4 +1,4 @@
-import { useTheme } from "../../context/ThemeContext";
+﻿import { useTheme } from "../../context/ThemeContext";
 
 const sizes = {
   xs: "w-7 h-7 text-[10px]",
@@ -23,8 +23,9 @@ const statusBg = {
 };
 
 const Avatar = ({
+  src = null,
   initials = "?",
-  color = "from-amber-400 to-orange-500",
+  color = "from-amber-400 to-orange-400",
   size = "md",
   status = null,
   className = "",
@@ -32,11 +33,19 @@ const Avatar = ({
   const { t } = useTheme();
   return (
     <div className={`relative shrink-0 ${className}`}>
-      <div
-        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center font-bold text-white ${sizes[size]}`}
-      >
-        {initials}
-      </div>
+      {src ? (
+        <img
+          src={src}
+          alt={initials}
+          className={`rounded-full object-cover ${sizes[size]}`}
+        />
+      ) : (
+        <div
+          className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center font-bold text-white ${sizes[size]}`}
+        >
+          {initials}
+        </div>
+      )}
       {status && (
         <div
           className={`absolute -bottom-0.5 -right-0.5 ${dotSizes[size]} rounded-full border-2 ${statusBg[status]} ${t("border-stone-900", "border-white")}`}

@@ -9,6 +9,7 @@ import {
   SkipForward,
   Sparkles,
   Camera,
+  Lock,
 } from "lucide-react";
 import supabase from "../../utils/supabaseClient";
 import NexTalkLogo from "../../components/NexTalkLogo";
@@ -37,6 +38,7 @@ const CompleteProfile = () => {
   const [initializing, setInitializing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [usernameIsLocked, setUsernameIsLocked] = useState(false);
 
   // Form state
   const [username, setUsername]       = useState("");
@@ -66,7 +68,10 @@ const CompleteProfile = () => {
         .maybeSingle();
 
       if (profile) {
-        if (profile.username)     setUsername(profile.username);
+        if (profile.username) {
+          setUsername(profile.username);
+          setUsernameIsLocked(true);
+        }
         if (profile.display_name) setDisplayName(profile.display_name);
         if (profile.about)        setAbout(profile.about);
         if (profile.gender)       setGender(profile.gender);
@@ -109,6 +114,13 @@ const CompleteProfile = () => {
       }
       setSaving(false);
       return;
+    }
+
+    // Sync display_name to auth.users metadata so user_metadata stays consistent
+    if (displayName.trim()) {
+      await supabase.auth.updateUser({
+        data: { display_name: displayName.trim(), full_name: displayName.trim() },
+      });
     }
 
     navigate("/chat");
@@ -258,16 +270,27 @@ const CompleteProfile = () => {
                     type="text"
                     placeholder="your_handle"
                     value={username}
+                    readOnly={usernameIsLocked}
                     onChange={(e) => {
+                      if (usernameIsLocked) return;
                       setUsername(e.target.value);
                       if (error) setError("");
                     }}
-                    className="w-full pl-11 pr-4 py-3 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all duration-200"
+                    className={`w-full pl-11 py-3 border rounded-xl text-stone-900 placeholder:text-stone-400 transition-all duration-200 ${
+                      usernameIsLocked
+                        ? "pr-10 bg-stone-50 border-stone-200 cursor-not-allowed select-all text-stone-500"
+                        : "pr-4 bg-white border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400"
+                    }`}
                     autoComplete="username"
                   />
+                  {usernameIsLocked && (
+                    <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-300" />
+                  )}
                 </div>
                 <p className="mt-1 text-[11px] text-stone-400">
-                  Letters, numbers, dots and underscores only. Min 3 characters.
+                  {usernameIsLocked
+                    ? "Username is permanent and cannot be changed."
+                    : "Letters, numbers, dots and underscores only. Min 3 characters."}
                 </p>
               </div>
 

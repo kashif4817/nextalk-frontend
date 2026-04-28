@@ -1,59 +1,177 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import data from "@emoji-mart/data";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft,
-  Phone,
-  Video,
-  MoreVertical,
-  Send,
-  Paperclip,
-  Smile,
-  Image as ImageIcon,
-  Check,
-  CheckCheck,
-  Reply,
-  Forward,
-  Copy,
-  Star,
-  Pin,
-  Trash2,
-  Edit2,
-  Search,
-  VolumeX,
-  Volume2,
-  Eraser,
-  ShieldOff,
-  Info,
-  Mic,
-  X,
-  Lock,
+  ArrowLeft, Phone, Video, MoreVertical, Send, Paperclip, Smile,
+  Check, CheckCheck, Reply, Forward, Copy, Star, Pin, Trash2,
+  Edit2, Search, VolumeX, Volume2, Eraser, ShieldOff, Info, Mic, X, Lock,
+  FileText, StopCircle, Loader2,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { useUser } from "../../context/UserContext";
+import { getConversation, markRead } from "../../api/conversations/conversation";
+import { getMessages, sendMessage, deleteMessage } from "../../api/messages/message";
+import { getContacts } from "../../api/contacts/contact";
 import {
-  CONVERSATIONS,
-  MESSAGES,
-  ME,
-  getUser,
-  getConversation,
-} from "../../data/mockChatData";
+  uploadImage as uploadImageApi,
+  uploadFile as uploadFileApi,
+  uploadAudio as uploadAudioApi,
+} from "../../api/upload/upload";
+import { normalizeConversationDetail, normalizeMessage, normalizeContact, formatTime } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
 import DropdownMenu, { MenuItem } from "../../components/chat/DropdownMenu";
 import { useLongPress } from "../../components/chat/useLongPress";
-import { comingSoon } from "../../utils/toast";
+import { comingSoon, showError } from "../../utils/toast";
 import { useWallpaper } from "../../context/WallpaperContext";
+
+// Direct emoji-mart wrapper — bypasses @emoji-mart/react which doesn't support React 19
+const EmojiPicker = ({ onEmojiSelect, theme }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    let destroyed = false;
+    import("emoji-mart").then(({ Picker }) => {
+      if (destroyed || !ref.current) return;
+      ref.current.innerHTML = "";
+      new Picker({
+        ref, data, theme, onEmojiSelect,
+        set: "native",
+        previewPosition: "none",
+        skinTonePosition: "search",
+        maxFrequentRows: 1,
+        perLine: 8,
+      });
+    });
+    return () => {
+      destroyed = true;
+      if (ref.current) ref.current.innerHTML = "";
+    };
+  }, [theme]);
+
+  const isDark = theme === "dark";
+  return (
+    <div
+      ref={ref}
+      style={{
+        "--em-rgb-accent": "0, 168, 132",
+        "--em-rgb-background": isDark ? "17, 27, 33" : "255, 255, 255",
+        "--em-rgb-color": isDark ? "233, 237, 239" : "17, 27, 33",
+        "--em-rgb-input": isDark ? "32, 44, 51" : "240, 242, 245",
+        "--em-color-border": isDark ? "rgba(134,150,160,0.15)" : "rgba(0,0,0,0.08)",
+        "--em-color-border-over": isDark ? "rgba(134,150,160,0.3)" : "rgba(0,0,0,0.15)",
+      }}
+    />
+  );
+};
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-const MessageBubble = ({ msg, mine, onLongPress, showName, conv }) => {
+const getMessageType = (mimeType) => {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "document";
+};
+
+const formatRecordingTime = (secs) => {
+  const m = String(Math.floor(secs / 60)).padStart(2, "0");
+  const s = String(secs % 60).padStart(2, "0");
+  return `${m}:${s}`;
+};
+
+// ── Media renderer inside a message bubble ────────────────────────────────
+const FileContent = ({ msg, mine, t, mediaOnly }) => {
+  const type = msg.message_type;
+  if (!msg.file_url || type === "text") return null;
+
+  const gap = mediaOnly ? "" : "mb-1";
+
+  if (type === "image") {
+    return (
+      <a href={msg.file_url} target="_blank" rel="noreferrer" className={`block ${gap}`}>
+        <img
+          src={msg.file_url}
+          alt="image"
+          className="rounded-xl max-w-[240px] w-full object-cover cursor-zoom-in"
+        />
+      </a>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <video
+        src={msg.file_url}
+        controls
+        className={`rounded-xl max-w-[260px] w-full ${gap}`}
+      />
+    );
+  }
+
+  if (type === "audio") {
+    return (
+      <audio
+        src={msg.file_url}
+        controls
+        className={`w-full ${gap}`}
+        style={{ minWidth: 200 }}
+      />
+    );
+  }
+
+  // document
+  return (
+    <a
+      href={msg.file_url}
+      target="_blank"
+      rel="noreferrer"
+      className={`flex items-center gap-2 mb-2 px-2.5 py-2 rounded-lg ${
+        mine ? "bg-white/15 text-white" : t("bg-white/5 text-stone-100", "bg-stone-100 text-stone-700")
+      }`}
+    >
+      <FileText className={`w-4 h-4 shrink-0 ${mine ? "text-white/80" : "text-amber-500"}`} />
+      <p className="text-xs font-medium truncate">
+        {msg.original_name || msg.file_type || "Document"}
+      </p>
+    </a>
+  );
+};
+
+// ── Message bubble ────────────────────────────────────────────────────────
+const MessageBubble = ({ msg, mine, onLongPress, showName, conv, currentUser }) => {
   const { t } = useTheme();
-  const sender = msg.sender_id === "me" ? ME : getUser(msg.sender_id);
+  const sender = mine ? currentUser : msg.sender;
   const lp = useLongPress(() => onLongPress(msg));
+
+  const isMedia = msg.file_url && msg.message_type !== "text";
+  const mediaOnly = isMedia && !msg.text && !msg.reply_to;
+  const isEmojiOnly = !isMedia && !msg.reply_to && !!msg.text &&
+    !/\w/.test(msg.text) && /\p{Extended_Pictographic}/u.test(msg.text);
+
+  const bubbleClass = isEmojiOnly
+    ? "relative cursor-pointer select-none"
+    : mediaOnly
+    ? "relative break-words cursor-pointer select-none"
+    : `relative px-3 py-2 rounded-2xl text-sm break-words cursor-pointer select-none ${
+        mine
+          ? "bg-gradient-to-br from-amber-400 to-orange-400 text-white rounded-br-md"
+          : t(
+              "bg-stone-800 text-stone-100 rounded-bl-md",
+              "bg-white text-stone-900 rounded-bl-md border border-stone-200"
+            )
+      }`;
 
   return (
     <div className={`flex gap-2 ${mine ? "justify-end" : "justify-start"}`}>
       {!mine && conv.is_group && (
-        <Avatar initials={sender?.initials} color={sender?.color} size="xs" />
+        <Avatar
+          src={sender?.avatar_url}
+          initials={sender?.initials}
+          color={sender?.color}
+          size="xs"
+        />
       )}
       <div className={`flex flex-col max-w-[78%] sm:max-w-md ${mine ? "items-end" : "items-start"}`}>
         {!mine && conv.is_group && showName && (
@@ -61,57 +179,43 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv }) => {
             {sender?.display_name}
           </span>
         )}
-        <div
-          {...lp}
-          className={`relative px-3 py-2 rounded-2xl text-sm break-words cursor-pointer select-none ${
-            mine
-              ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-br-md"
-              : t(
-                  "bg-stone-800 text-stone-100 rounded-bl-md",
-                  "bg-white text-stone-900 rounded-bl-md border border-stone-200"
-                )
-          }`}
-        >
-          {msg.attachment && (
-            <div
-              className={`flex items-center gap-2 mb-2 px-2.5 py-2 rounded-lg ${
-                mine ? "bg-white/15" : t("bg-white/5", "bg-stone-100")
-              }`}
-            >
-              <div
-                className={`w-9 h-9 rounded-md flex items-center justify-center ${
-                  mine ? "bg-white/20" : "bg-amber-500/20"
-                }`}
-              >
-                <Paperclip
-                  className={`w-4 h-4 ${mine ? "text-white" : "text-amber-500"}`}
-                />
+        <div {...lp} className={bubbleClass}>
+          {msg.reply_to && (() => {
+            const senderName = msg.reply_to.sender_name ||
+              conv.members?.find(m => m.id === msg.reply_to.sender_id)?.display_name ||
+              "Unknown";
+            const isMedia = msg.reply_to.message_type !== "text";
+            const mediaLabel = { image: "📷 Photo", video: "🎥 Video", audio: "🎵 Voice message", document: "📄 Document" }[msg.reply_to.message_type] || "📎 Media";
+            return (
+              <div className={`mb-2 rounded-lg border-l-[3px] border-amber-400 overflow-hidden flex ${mine ? "bg-black/25" : t("bg-black/20", "bg-stone-200")}`}>
+                {isMedia && msg.reply_to.file_url && msg.reply_to.message_type === "image" && (
+                  <img src={msg.reply_to.file_url} alt="" className="w-12 h-12 object-cover shrink-0" />
+                )}
+                <div className="px-2.5 py-1.5 min-w-0">
+                  <p className="text-[11px] font-semibold text-amber-400 truncate">{senderName}</p>
+                  {isMedia ? (
+                    <p className={`text-xs italic ${mine ? "text-white/70" : t("text-stone-400", "text-stone-400")}`}>{mediaLabel}</p>
+                  ) : (
+                    <p className={`text-xs truncate ${mine ? "text-white/80" : t("text-stone-300", "text-stone-600")}`}>{msg.reply_to.text || "Message"}</p>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{msg.attachment.name}</p>
-                <p className={`text-[10px] ${mine ? "text-white/70" : t("text-stone-400", "text-stone-500")}`}>
-                  {msg.attachment.size}
-                </p>
-              </div>
-            </div>
-          )}
-          <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-          {msg.starred && (
-            <Star className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            );
+          })()}
+
+          <FileContent msg={msg} mine={mine} t={t} mediaOnly={mediaOnly} />
+
+          {msg.text && (
+            <p className={isEmojiOnly ? "text-4xl leading-none" : "leading-relaxed whitespace-pre-wrap"}>
+              {msg.text}
+            </p>
           )}
         </div>
 
-        {/* Reactions */}
         {msg.reactions?.length > 0 && (
           <div className="flex gap-1 mt-1 px-1">
             {msg.reactions.map((r, i) => (
-              <span
-                key={i}
-                className={`text-xs px-1.5 py-0.5 rounded-full border ${t(
-                  "bg-stone-800 border-white/10",
-                  "bg-white border-stone-200"
-                )}`}
-              >
+              <span key={i} className={`text-xs px-1.5 py-0.5 rounded-full border ${t("bg-stone-800 border-white/10", "bg-white border-stone-200")}`}>
                 {r.emoji} {r.count}
               </span>
             ))}
@@ -120,32 +224,85 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv }) => {
 
         <div className={`flex items-center gap-1 mt-0.5 px-1 text-[10px] ${t("text-stone-500", "text-stone-400")}`}>
           <span>{msg.time}</span>
-          {mine && (msg.status === "read" ? (
-            <CheckCheck className="w-3 h-3 text-amber-500" />
-          ) : (
-            <Check className="w-3 h-3" />
-          ))}
+          {mine && (msg.status === "read"
+            ? <CheckCheck className="w-3 h-3 text-amber-500" />
+            : <Check className="w-3 h-3" />
+          )}
         </div>
       </div>
     </div>
   );
 };
 
+// ── Main component ────────────────────────────────────────────────────────
 const ChatThread = () => {
   const { t, dark } = useTheme();
   const { wallpaper } = useWallpaper();
+  const { user } = useUser();
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const conv = getConversation(id);
-  const other = conv && !conv.is_group ? getUser(conv.other_user_id) : null;
+  const queryClient = useQueryClient();
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["thread", id],
+    queryFn: async () => {
+      const [convRes, msgRes] = await Promise.all([getConversation(id), getMessages(id)]);
+      const conv = normalizeConversationDetail(convRes.data.data, user.id);
+      const messages = (msgRes.data.data?.messages || [])
+        .map(m => normalizeMessage(m, user.id))
+        .reverse();
+      return { conv, messages };
+    },
+    enabled: !!id && !!user,
+  });
 
-  const [messages, setMessages] = useState(MESSAGES[id] || []);
+  // Contacts — same cache key as ChatListPane, so this is a free cache read
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", user?.id],
+    queryFn: async () => {
+      const res = await getContacts();
+      return (res.data.data || []).map(normalizeContact).filter(Boolean);
+    },
+    enabled: !!user,
+  });
+
+  const rawConv = data?.conv ?? null;
+  const messages = data?.messages ?? [];
+
+  // Override the conversation title with the saved contact nickname if one exists
+  const conv = rawConv && !rawConv.is_group
+    ? (() => {
+        const contactRow = contacts.find(c => c.id === rawConv.other_user_id);
+        const nickname = contactRow?.nickname;
+        return nickname ? { ...rawConv, title: nickname } : rawConv;
+      })()
+    : rawConv;
+
+  // Helper: update the messages array inside the cached thread without a full refetch
+  const updateMessages = (fn) =>
+    queryClient.setQueryData(["thread", id], (old) =>
+      old ? { ...old, messages: fn(old.messages) } : old
+    );
+
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionMsg, setActionMsg] = useState(null);
   const [reactingTo, setReactingTo] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [filePreview, setFilePreview] = useState(null);
+
+  // Voice recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+
+  const emojiPickerRef = useRef(null);
+  const emojiButtonRef = useRef(null);
+  const fileInputRef = useRef(null);
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -153,49 +310,266 @@ const ChatThread = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  if (!conv) {
+  useEffect(() => {
+    if (!id) return;
+    markRead(id)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }))
+      .catch(() => {});
+  }, [id, queryClient]);
+
+  useEffect(() => {
+    if (!showEmoji) return;
+    const handleClickOutside = (e) => {
+      if (emojiButtonRef.current?.contains(e.target)) return;
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
+        setShowEmoji(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showEmoji]);
+
+  // Clean up recording on unmount
+  useEffect(() => {
+    return () => {
+      clearInterval(recordingTimerRef.current);
+      mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
+  if (loading) {
     return (
-      <div className={`h-full flex flex-col items-center justify-center ${t("bg-stone-950 text-stone-300", "bg-stone-50 text-stone-700")}`}>
-        <p className="mb-4">Conversation not found.</p>
-        <button onClick={() => navigate("/chat")} className="text-amber-500 underline">
-          Back to chats
-        </button>
+      <div className={`h-full flex items-center justify-center ${t("bg-stone-950", "bg-stone-50")}`}>
+        <div className="w-8 h-8 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
       </div>
     );
   }
 
-  const send = () => {
+  if (!conv) {
+    return (
+      <div className={`h-full flex flex-col items-center justify-center ${t("bg-stone-950 text-stone-300", "bg-stone-50 text-stone-700")}`}>
+        <p className="mb-4">Conversation not found.</p>
+        <button onClick={() => navigate("/chat")} className="text-amber-500 underline">Back to chats</button>
+      </div>
+    );
+  }
+
+  // ── Text send ────────────────────────────────────────────────────────────
+  const send = async () => {
     const text = draft.trim();
     if (!text) return;
-    const time = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        sender_id: "me",
-        text,
-        time,
-        reactions: [],
-        starred: false,
-        status: "sent",
-        reply_to: replyTo ? { id: replyTo.id, text: replyTo.text, sender: replyTo.sender_id === "me" ? "You" : getUser(replyTo.sender_id)?.display_name } : null,
-      },
-    ]);
+    const optimistic = {
+      id: `opt-${Date.now()}`,
+      sender_id: user.id,
+      message_type: "text",
+      content: text,
+      text,
+      time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+      created_at: new Date().toISOString(),
+      reactions: [],
+      status: "sent",
+      seen_by: [],
+      sender: user,
+      reply_to: replyTo ? {
+        id: replyTo.id,
+        text: replyTo.text || replyTo.content,
+        message_type: replyTo.message_type || "text",
+        file_url: replyTo.file_url || null,
+        sender_id: replyTo.sender_id,
+        sender_name: replyTo.sender_id === user.id ? "You" : (replyTo.sender_name || replyTo.sender?.display_name || null),
+      } : null,
+    };
+    updateMessages(prev => [...prev, optimistic]);
     setDraft("");
     setReplyTo(null);
+    setShowEmoji(false);
     inputRef.current?.focus();
+    try {
+      await sendMessage({ conversation_id: id, content: text, reply_to_id: replyTo?.id || null });
+    } catch {
+      updateMessages(prev => prev.filter(m => m.id !== optimistic.id));
+    }
   };
 
+  // ── File/image/video/doc upload ──────────────────────────────────────────
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const msgType = getMessageType(file.type);
+    const previewUrl = URL.createObjectURL(file);
+
+    setFilePreview({
+      file,
+      msgType,
+      previewUrl,
+    });
+  };
+
+  const confirmFileUpload = async () => {
+    if (!filePreview) return;
+    const { file, msgType } = filePreview;
+    const optId = `opt-${Date.now()}`;
+    setUploading(true);
+
+    try {
+      const uploadFn =
+        msgType === "image" ? uploadImageApi :
+        msgType === "audio" ? uploadAudioApi :
+        uploadFileApi;
+
+      const { data } = await uploadFn(file);
+      const fileUrl = data.data.url;
+
+      const optimistic = {
+        id: optId,
+        sender_id: user.id,
+        message_type: msgType,
+        content: null,
+        text: null,
+        file_url: fileUrl,
+        file_type: file.type,
+        original_name: file.name,
+        time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        created_at: new Date().toISOString(),
+        reactions: [],
+        status: "sent",
+        seen_by: [],
+        sender: user,
+        reply_to: replyTo ? {
+          id: replyTo.id,
+          text: replyTo.text || replyTo.content,
+          message_type: replyTo.message_type || "text",
+          file_url: replyTo.file_url || null,
+          sender_id: replyTo.sender_id,
+          sender_name: replyTo.sender_id === user.id ? "You" : (replyTo.sender_name || replyTo.sender?.display_name || null),
+        } : null,
+      };
+
+      updateMessages(prev => [...prev, optimistic]);
+      setReplyTo(null);
+      setFilePreview(null);
+
+      await sendMessage({
+        conversation_id: id,
+        message_type: msgType,
+        file_url: fileUrl,
+        file_type: file.type,
+        reply_to_id: replyTo?.id || null,
+      });
+    } catch {
+      showError("Upload failed. Please try again.");
+      updateMessages(prev => prev.filter(m => m.id !== optId));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Voice recording ──────────────────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch {
+      showError("Microphone access denied.");
+    }
+  };
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+
+    recorder.onstop = async () => {
+      const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+      recorder.stream.getTracks().forEach(t => t.stop());
+      audioChunksRef.current = [];
+      await sendVoiceMessage(blob);
+    };
+
+    recorder.stop();
+    setIsRecording(false);
+    clearInterval(recordingTimerRef.current);
+    setRecordingTime(0);
+  };
+
+  const cancelRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    recorder.stream.getTracks().forEach(t => t.stop());
+    recorder.stop();
+    audioChunksRef.current = [];
+    mediaRecorderRef.current = null;
+    setIsRecording(false);
+    clearInterval(recordingTimerRef.current);
+    setRecordingTime(0);
+  };
+
+  const sendVoiceMessage = async (blob) => {
+    const optId = `opt-${Date.now()}`;
+    setUploading(true);
+    try {
+      const { data } = await uploadAudioApi(blob);
+      const fileUrl = data.data.url;
+
+      const optimistic = {
+        id: optId,
+        sender_id: user.id,
+        message_type: "audio",
+        content: null,
+        text: null,
+        file_url: fileUrl,
+        file_type: "audio/webm",
+        time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        created_at: new Date().toISOString(),
+        reactions: [],
+        status: "sent",
+        seen_by: [],
+        sender: user,
+        reply_to: null,
+      };
+
+      updateMessages(prev => [...prev, optimistic]);
+      await sendMessage({
+        conversation_id: id,
+        message_type: "audio",
+        file_url: fileUrl,
+        file_type: "audio/webm",
+      });
+    } catch {
+      showError("Failed to send voice message.");
+      updateMessages(prev => prev.filter(m => m.id !== optId));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Message actions ──────────────────────────────────────────────────────
   const handleAction = (action) => {
     if (!actionMsg) return;
     if (action === "reply") setReplyTo(actionMsg);
     if (action === "copy") navigator.clipboard?.writeText(actionMsg.text);
-    if (action === "star")
-      setMessages((p) =>
-        p.map((m) => (m.id === actionMsg.id ? { ...m, starred: !m.starred } : m))
-      );
-    if (action === "delete-me" || action === "delete-all")
-      setMessages((p) => p.filter((m) => m.id !== actionMsg.id));
+    if (action === "delete-me") {
+      deleteMessage(actionMsg.id, "for_me").catch(console.error);
+      updateMessages(p => p.filter(m => m.id !== actionMsg.id));
+    }
+    if (action === "delete-all") {
+      deleteMessage(actionMsg.id, "for_everyone").catch(console.error);
+      updateMessages(p => p.filter(m => m.id !== actionMsg.id));
+    }
     if (action === "react") {
       setReactingTo(actionMsg);
       setActionMsg(null);
@@ -206,20 +580,12 @@ const ChatThread = () => {
 
   const addReaction = (emoji) => {
     if (!reactingTo) return;
-    setMessages((p) =>
-      p.map((m) => {
+    updateMessages(p =>
+      p.map(m => {
         if (m.id !== reactingTo.id) return m;
-        const has = m.reactions?.find((r) => r.emoji === emoji);
-        if (has) {
-          return {
-            ...m,
-            reactions: m.reactions.filter((r) => r.emoji !== emoji),
-          };
-        }
-        return {
-          ...m,
-          reactions: [...(m.reactions || []), { emoji, count: 1, by_me: true }],
-        };
+        const has = m.reactions?.find(r => r.emoji === emoji);
+        if (has) return { ...m, reactions: m.reactions.filter(r => r.emoji !== emoji) };
+        return { ...m, reactions: [...(m.reactions || []), { emoji, count: 1, by_me: true }] };
       })
     );
     setReactingTo(null);
@@ -227,122 +593,83 @@ const ChatThread = () => {
 
   const headerSubtitle = conv.is_group
     ? `${conv.members_count} members`
-    : other?.status === "online"
+    : conv.status === "online"
     ? "online"
-    : `last seen ${other?.last_seen}`;
+    : `last seen ${formatTime(conv.last_seen)}`;
 
   return (
-    <div className={`h-full flex flex-col ${t("bg-stone-950 text-stone-100", "bg-stone-100 text-stone-900")}`}>
-      {/* ── Header (the only top bar in chat thread — no global app bar) ── */}
-      <header
-        className={`shrink-0 border-b backdrop-blur-xl ${t(
-          "bg-stone-950/80 border-white/5",
-          "bg-white/85 border-stone-200"
-        )}`}
-      >
+    <div className={`h-full flex flex-col relative ${t("bg-stone-950 text-stone-100", "bg-stone-100 text-stone-900")}`}>
+
+      {/* Hidden file input — accepts images, videos, docs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        hidden
+        accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt"
+        onChange={handleFileSelect}
+      />
+
+      <header className={`shrink-0 border-b backdrop-blur-xl ${t("bg-stone-950/80 border-white/5", "bg-white/85 border-stone-200")}`}>
         <div className="flex items-center gap-2 px-2 h-14">
-          <button
-            onClick={() => navigate(-1)}
-            className={`md:hidden p-2 rounded-lg cursor-pointer ${t("text-stone-300 hover:bg-white/5", "text-stone-700 hover:bg-stone-100")}`}
-          >
+          <button onClick={() => navigate(-1)} className={`md:hidden p-2 rounded-lg cursor-pointer ${t("text-stone-300 hover:bg-white/5", "text-stone-700 hover:bg-stone-100")}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <button
-            onClick={() => {
-              if (conv.is_group) navigate(`/chat/${conv.id}/info`);
-              else navigate(`/chat/profile/${conv.other_user_id}`);
-            }}
+            onClick={() => conv.is_group ? navigate(`/chat/${conv.id}/info`) : navigate(`/chat/profile/${conv.other_user_id}`)}
             className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
           >
             <Avatar
-              initials={conv.is_group ? conv.initials : other?.initials}
-              color={conv.is_group ? conv.color : other?.color}
+              src={conv.avatar_url}
+              initials={conv.initials}
+              color={conv.color}
               size="sm"
-              status={!conv.is_group ? other?.status : null}
+              status={conv.status}
             />
             <div className="text-left min-w-0">
-              <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
-                {conv.title}
-              </p>
-              <p className={`text-[11px] truncate ${t("text-stone-400", "text-stone-500")}`}>
-                {headerSubtitle}
-              </p>
+              <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>{conv.title}</p>
+              <p className={`text-[11px] truncate ${t("text-stone-400", "text-stone-500")}`}>{headerSubtitle}</p>
             </div>
           </button>
-          <button
-            onClick={() => comingSoon("Video calls")}
-            className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
-          >
+          <button onClick={() => comingSoon("Video calls")} className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}>
             <Video className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => comingSoon("Voice calls")}
-            className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
-          >
+          <button onClick={() => comingSoon("Voice calls")} className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}>
             <Phone className="w-5 h-5" />
           </button>
           <div className="relative">
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
-            >
+            <button onClick={() => setMenuOpen(v => !v)} className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}>
               <MoreVertical className="w-5 h-5" />
             </button>
-
             <DropdownMenu open={menuOpen} onClose={() => setMenuOpen(false)}>
-              <MenuItem icon={Info} label={conv.is_group ? "Group info" : "View profile"} onClick={() => {
-                setMenuOpen(false);
-                if (conv.is_group) navigate(`/chat/${conv.id}/info`);
-                else navigate(`/chat/profile/${conv.other_user_id}`);
-              }} />
+              <MenuItem icon={Info} label={conv.is_group ? "Group info" : "View profile"} onClick={() => { setMenuOpen(false); conv.is_group ? navigate(`/chat/${conv.id}/info`) : navigate(`/chat/profile/${conv.other_user_id}`); }} />
               <MenuItem icon={Search} label="Search messages" onClick={() => { setMenuOpen(false); comingSoon("In-chat search"); }} />
               <MenuItem icon={Pin} label="Pinned messages" onClick={() => setMenuOpen(false)} />
               <MenuItem icon={Star} label="Starred messages" onClick={() => { setMenuOpen(false); navigate("/chat/starred"); }} />
-              {conv.is_muted ? (
-                <MenuItem icon={Volume2} label="Unmute notifications" onClick={() => setMenuOpen(false)} />
-              ) : (
-                <MenuItem icon={VolumeX} label="Mute notifications" onClick={() => setMenuOpen(false)} />
-              )}
-              <MenuItem icon={Eraser} label="Clear chat" onClick={() => { setMenuOpen(false); setMessages([]); }} />
-              {!conv.is_group && (
-                <MenuItem icon={ShieldOff} label="Block user" danger onClick={() => setMenuOpen(false)} />
-              )}
+              {conv.is_muted
+                ? <MenuItem icon={Volume2} label="Unmute notifications" onClick={() => setMenuOpen(false)} />
+                : <MenuItem icon={VolumeX} label="Mute notifications" onClick={() => setMenuOpen(false)} />
+              }
+              <MenuItem icon={Eraser} label="Clear chat" onClick={() => { setMenuOpen(false); updateMessages(() => []); }} />
+              {!conv.is_group && <MenuItem icon={ShieldOff} label="Block user" danger onClick={() => setMenuOpen(false)} />}
             </DropdownMenu>
           </div>
         </div>
       </header>
 
-      {/* ── Messages ── */}
-      <div
-        style={wallpaper.style(dark)}
-        className="flex-1 overflow-y-auto scrollbar-hide px-3 sm:px-6 py-3 space-y-2"
-      >
-        {/* End-to-end encryption notice */}
+      <div style={wallpaper.style(dark)} className="flex-1 overflow-y-auto scrollbar-hide px-3 sm:px-6 py-3 space-y-2">
         <div className="flex justify-center pt-1 pb-3">
-          <div
-            className={`max-w-md inline-flex items-start gap-2 px-3.5 py-2 rounded-xl text-[11px] leading-snug text-center ${t(
-              "bg-amber-500/10 text-amber-200/90 border border-amber-500/15",
-              "bg-amber-50 text-amber-800 border border-amber-200/70"
-            )}`}
-          >
+          <div className={`max-w-md inline-flex items-start gap-2 px-3.5 py-2 rounded-xl text-[11px] leading-snug text-center ${t("bg-amber-500/10 text-amber-200/90 border border-amber-500/15", "bg-amber-50 text-amber-800 border border-amber-200/70")}`}>
             <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" />
             <span>
               Messages are end-to-end encrypted. No one outside of this chat, not even NexTalk, can read or listen to them.{" "}
-              <button
-                onClick={() => navigate("/privacy")}
-                className="font-semibold text-amber-600 hover:text-amber-500 underline underline-offset-2 cursor-pointer"
-              >
-                Learn more
-              </button>
+              <button onClick={() => navigate("/privacy")} className="font-semibold text-amber-600 hover:text-amber-500 underline underline-offset-2 cursor-pointer">Learn more</button>
             </span>
           </div>
         </div>
 
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <div className={`text-center text-sm ${t("text-stone-500", "text-stone-400")}`}>
-              <p>No messages yet. Say hi 👋</p>
-            </div>
+            <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>No messages yet. Say hi 👋</p>
           </div>
         ) : (
           messages.map((m, i) => {
@@ -352,10 +679,11 @@ const ChatThread = () => {
               <MessageBubble
                 key={m.id}
                 msg={m}
-                mine={m.sender_id === "me"}
+                mine={m.sender_id === user.id}
                 onLongPress={setActionMsg}
                 showName={showName}
                 conv={conv}
+                currentUser={user}
               />
             );
           })
@@ -363,99 +691,176 @@ const ChatThread = () => {
         <div ref={endRef} />
       </div>
 
-      {/* ── Reply preview ── */}
-      {replyTo && (
-        <div
-          className={`px-4 py-2 flex items-center gap-3 border-t ${t(
-            "bg-stone-900 border-white/5",
-            "bg-stone-50 border-stone-200"
-          )}`}
-        >
-          <div className="w-1 h-10 rounded-full bg-amber-500" />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-amber-500">
-              Replying to {replyTo.sender_id === "me" ? "yourself" : getUser(replyTo.sender_id)?.display_name}
-            </p>
-            <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
-              {replyTo.text}
-            </p>
+      {replyTo && (() => {
+        const replyBarName = replyTo.sender_id === user.id ? "yourself" : (replyTo.sender_name || replyTo.sender?.display_name || "Unknown");
+        const replyIsMedia = replyTo.message_type && replyTo.message_type !== "text";
+        const replyMediaLabel = { image: "📷 Photo", video: "🎥 Video", audio: "🎵 Voice message", document: "📄 Document" }[replyTo.message_type] || "📎 Media";
+        return (
+          <div className={`px-4 py-2 flex items-center gap-3 border-t ${t("bg-stone-900 border-white/5", "bg-stone-50 border-stone-200")}`}>
+            <div className="w-1 self-stretch rounded-full bg-amber-500 shrink-0" />
+            {replyIsMedia && replyTo.file_url && replyTo.message_type === "image" && (
+              <img src={replyTo.file_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-500 truncate">Replying to {replyBarName}</p>
+              <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
+                {replyIsMedia ? replyMediaLabel : (replyTo.text || replyTo.content || "Message")}
+              </p>
+            </div>
+            <button onClick={() => setReplyTo(null)} className={`p-1 rounded shrink-0 ${t("text-stone-400", "text-stone-500")}`}>
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={() => setReplyTo(null)}
-            className={`p-1 rounded ${t("text-stone-400", "text-stone-500")}`}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* ── Input ── */}
-      <footer
-        className={`shrink-0 border-t px-2 py-2 flex items-end gap-1 ${t(
-          "bg-stone-950 border-white/5",
-          "bg-white border-stone-200"
-        )}`}
-      >
-        <button
-          onClick={() => comingSoon("Emoji picker")}
-          className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
-        >
-          <Smile className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => comingSoon("Attachments")}
-          className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
-        >
-          <Paperclip className="w-5 h-5" />
-        </button>
-        <div
-          className={`flex-1 flex items-center px-3 py-2 rounded-2xl ${t(
-            "bg-stone-900",
-            "bg-stone-100"
-          )}`}
-        >
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
-            placeholder="Type a message"
-            className={`flex-1 bg-transparent outline-none text-sm ${t(
-              "text-stone-100 placeholder-stone-500",
-              "text-stone-900 placeholder-stone-400"
-            )}`}
-          />
-        </div>
-        {draft.trim() ? (
-          <button
-            onClick={send}
-            className="p-2.5 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white cursor-pointer"
-          >
-            <Send className="w-4.5 h-4.5" />
-          </button>
+      {/* ── Footer ── */}
+      <footer className={`shrink-0 border-t px-2 py-2 flex items-end gap-1 ${t("bg-stone-950 border-white/5", "bg-white border-stone-200")}`}>
+        {isRecording ? (
+          // Recording UI
+          <div className="flex-1 flex items-center gap-2 px-2">
+            <button
+              onClick={cancelRecording}
+              className={`p-2 rounded-lg ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-red-500">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              {formatRecordingTime(recordingTime)}
+            </span>
+            <div className="flex-1" />
+            <button
+              onClick={stopRecording}
+              className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer"
+            >
+              <StopCircle className="w-5 h-5" />
+            </button>
+          </div>
         ) : (
-          <button
-            onClick={() => comingSoon("Voice messages")}
-            className={`p-2.5 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 text-white cursor-pointer`}
-          >
-            <Mic className="w-4.5 h-4.5" />
-          </button>
+          <>
+            <button
+              ref={emojiButtonRef}
+              onClick={() => setShowEmoji(v => !v)}
+              className={`p-2 rounded-lg cursor-pointer transition-colors ${showEmoji ? t("text-amber-400 bg-amber-500/15", "text-amber-600 bg-amber-50") : t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={`p-2 rounded-lg cursor-pointer ${t("text-stone-400 hover:bg-white/5", "text-stone-500 hover:bg-stone-100")}`}
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <div className={`flex-1 flex items-center px-3 py-2 rounded-2xl ${t("bg-stone-900", "bg-stone-100")}`}>
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
+                placeholder="Type a message"
+                className={`flex-1 bg-transparent outline-none text-sm ${t("text-stone-100 placeholder-stone-500", "text-stone-900 placeholder-stone-400")}`}
+              />
+            </div>
+            {uploading ? (
+              <div className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white">
+                <Loader2 className="w-4.5 h-4.5 animate-spin" />
+              </div>
+            ) : draft.trim() ? (
+              <button onClick={send} className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer">
+                <Send className="w-4.5 h-4.5" />
+              </button>
+            ) : (
+              <button
+                onClick={startRecording}
+                className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer"
+              >
+                <Mic className="w-4.5 h-4.5" />
+              </button>
+            )}
+          </>
         )}
       </footer>
 
-      {/* ── Long-press message menu ── */}
+      {filePreview && (
+        <BottomSheet open={true} onClose={() => setFilePreview(null)}>
+          <div className="px-5 py-4 flex flex-col items-center gap-4">
+            <p className={`text-sm font-semibold ${t("text-stone-100", "text-stone-900")}`}>
+              Send {filePreview.msgType}?
+            </p>
+
+            {filePreview.msgType === "image" && (
+              <img
+                src={filePreview.previewUrl}
+                alt="preview"
+                className="rounded-lg max-w-xs max-h-72 object-cover"
+              />
+            )}
+            {filePreview.msgType === "video" && (
+              <video
+                src={filePreview.previewUrl}
+                controls
+                className="rounded-lg max-w-xs max-h-72"
+              />
+            )}
+            {filePreview.msgType === "audio" && (
+              <audio
+                src={filePreview.previewUrl}
+                controls
+                className="w-full max-w-xs"
+              />
+            )}
+            {filePreview.msgType === "document" && (
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-lg w-full ${t("bg-stone-800", "bg-stone-100")}`}>
+                <FileText className={`w-6 h-6 shrink-0 ${t("text-stone-400", "text-stone-500")}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{filePreview.file.name}</p>
+                  <p className={`text-xs ${t("text-stone-500", "text-stone-400")}`}>
+                    {(filePreview.file.size / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setFilePreview(null)}
+                className={`flex-1 py-2.5 rounded-lg font-medium text-sm ${t("bg-stone-800 text-stone-100 hover:bg-stone-700", "bg-stone-200 text-stone-900 hover:bg-stone-300")}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmFileUpload}
+                disabled={uploading}
+                className="flex-1 py-2.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? "Uploading..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+
+      {showEmoji && (
+        <div
+          ref={emojiPickerRef}
+          className="absolute bottom-[60px] left-2 z-[999] max-w-[calc(100%-16px)]"
+        >
+          <EmojiPicker
+            theme={dark ? "dark" : "light"}
+            onEmojiSelect={(emoji) => {
+              setDraft(prev => prev + emoji.native);
+              setShowEmoji(false);
+              inputRef.current?.focus();
+            }}
+          />
+        </div>
+      )}
+
       <BottomSheet open={!!actionMsg} onClose={() => setActionMsg(null)}>
         <div className="px-4 py-2 flex justify-around mb-1">
-          {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => {
-                setReactingTo(actionMsg);
-                setActionMsg(null);
-                setTimeout(() => addReaction(emoji), 0);
-              }}
-              className={`text-xl p-2 rounded-full transition-transform hover:scale-125 cursor-pointer`}
-            >
+          {QUICK_REACTIONS.map(emoji => (
+            <button key={emoji} onClick={() => { setReactingTo(actionMsg); setActionMsg(null); setTimeout(() => addReaction(emoji), 0); }} className="text-xl p-2 rounded-full transition-transform hover:scale-125 cursor-pointer">
               {emoji}
             </button>
           ))}
@@ -464,20 +869,15 @@ const ChatThread = () => {
         <SheetItem icon={Reply} label="Reply" onClick={() => handleAction("reply")} />
         <SheetItem icon={Copy} label="Copy" onClick={() => handleAction("copy")} />
         <SheetItem icon={Forward} label="Forward" onClick={() => setActionMsg(null)} />
-        <SheetItem
-          icon={Star}
-          label={actionMsg?.starred ? "Unstar" : "Star"}
-          onClick={() => handleAction("star")}
-        />
         <SheetItem icon={Pin} label="Pin" onClick={() => setActionMsg(null)} />
-        {actionMsg?.sender_id === "me" && (
+        {actionMsg?.sender_id === user?.id && (
           <SheetItem icon={Edit2} label="Edit" onClick={() => setActionMsg(null)} hint="15 min" />
         )}
         <SheetItem
           icon={Trash2}
-          label={actionMsg?.sender_id === "me" ? "Delete for everyone" : "Delete for me"}
+          label={actionMsg?.sender_id === user?.id ? "Delete for everyone" : "Delete for me"}
           danger
-          onClick={() => handleAction("delete-me")}
+          onClick={() => handleAction(actionMsg?.sender_id === user?.id ? "delete-all" : "delete-me")}
         />
       </BottomSheet>
     </div>

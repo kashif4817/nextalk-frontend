@@ -1,9 +1,13 @@
 import { Route, Routes } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import ProtectedRoutes from "./routes/ProtectedRoutes";
+import PublicRoutes from "./routes/PublicRoutes";
 import AuthCallback from "./pages/AuthCallback";
 import LoginPage from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import CompleteProfile from "./pages/auth/CompleteProfile";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Home from "./pages/Home";
 
@@ -44,30 +48,41 @@ export default function App() {
   return (
     <div>
       <Routes>
+        {/* Open to everyone */}
         <Route path="/" element={<Home />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/complete-profile" element={<CompleteProfile />} />
 
-        {/* Chat module — specific routes first so they outrank /chat/:id */}
-        <Route path="/chat/new" element={<NewChat />} />
-        <Route path="/chat/new-group" element={<NewGroup />} />
-        <Route path="/chat/explore" element={<Explore />} />
-        <Route path="/chat/contacts" element={<Contacts />} />
-        <Route path="/chat/archived" element={<Archived />}>
-          <Route path=":id" element={<ChatThread />} />
+        {/* Auth pages — redirect to /chat if already logged in */}
+        <Route element={<PublicRoutes />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Route>
-        <Route path="/chat/starred" element={<Starred />} />
-        <Route path="/chat/blocked" element={<Blocked />} />
-        <Route path="/chat/settings" element={<Settings />} />
-        <Route path="/chat/settings/privacy" element={<PrivacySettings />} />
-        <Route path="/chat/settings/wallpaper" element={<ChatWallpaper />} />
-        <Route path="/chat/profile/:id" element={<UserProfile />} />
 
-        {/* Split view (chat list + thread) — handles /chat and /chat/:id */}
-        <Route path="/chat" element={<ChatHome />} />
-        <Route path="/chat/:id" element={<ChatHome />} />
+        {/* Requires a valid session */}
+        <Route element={<ProtectedRoutes />}>
+          <Route path="/complete-profile" element={<CompleteProfile />} />
+
+          {/* Chat module — specific routes first so they outrank /chat/:id */}
+          <Route path="/chat/new" element={<NewChat />} />
+          <Route path="/chat/new-group" element={<NewGroup />} />
+          <Route path="/chat/explore" element={<Explore />} />
+          <Route path="/chat/contacts" element={<Contacts />} />
+          <Route path="/chat/archived" element={<Archived />}>
+            <Route path=":id" element={<ChatThread />} />
+          </Route>
+          <Route path="/chat/starred" element={<Starred />} />
+          <Route path="/chat/blocked" element={<Blocked />} />
+          <Route path="/chat/settings" element={<Settings />} />
+          <Route path="/chat/settings/privacy" element={<PrivacySettings />} />
+          <Route path="/chat/settings/wallpaper" element={<ChatWallpaper />} />
+          <Route path="/chat/profile/:id" element={<UserProfile />} />
+
+          {/* Split view (chat list + thread) — handles /chat and /chat/:id */}
+          <Route path="/chat" element={<ChatHome />} />
+          <Route path="/chat/:id" element={<ChatHome />} />
+        </Route>
 
         {/* Product */}
         <Route path="/features" element={<Features />} />

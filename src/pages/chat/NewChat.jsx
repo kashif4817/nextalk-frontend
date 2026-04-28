@@ -1,40 +1,62 @@
-import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Search, UsersRound, UserPlus, Sparkles, X } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, BLOCKED_USER_IDS } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { searchUsers } from "../../api/users/user";
+import { getContacts } from "../../api/contacts/contact";
+import { normalizeUser, normalizeContact } from "../../utils/formatters";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
 
 const NewChat = () => {
   const { t } = useTheme();
+  const { user } = useUser();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
 
-  // Available users = not blocked, not me
-  const usersList = useMemo(() => ALL_USERS.filter((u) => !BLOCKED_USER_IDS.includes(u.id)), []);
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts", user?.id],
+    queryFn: async () => {
+      const res = await getContacts();
+      return (res.data.data || []).map(normalizeContact).filter(Boolean);
+    },
+    enabled: !!user,
+  });
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return usersList;
-    return usersList.filter(
-      (u) =>
-        u.display_name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q) ||
-        u.about?.toLowerCase().includes(q)
-    );
-  }, [query, usersList]);
+  useEffect(() => {
+    if (!query.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(() => {
+      searchUsers(query)
+        .then(res => {
+          const rows = res.data.data || [];
+          setSearchResults(rows.map(normalizeUser).filter(Boolean));
+        })
+        .catch(console.error);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const contacts = filtered.filter((u) => u.is_contact);
-  const others = filtered.filter((u) => !u.is_contact);
+  const contactIds = useMemo(() => new Set(contacts.map(c => c.id)), [contacts]);
+
+  const displayedContacts = query.trim()
+    ? searchResults.filter(u => contactIds.has(u.id))
+    : contacts;
+
+  const others = query.trim()
+    ? searchResults.filter(u => !contactIds.has(u.id))
+    : [];
+
+  const noResults = query.trim() && searchResults.length === 0;
 
   return (
     <ChatShell active="chats">
     <div className={`min-h-screen ${t("bg-stone-950 text-stone-100", "bg-stone-50 text-stone-900")}`}>
-      <ChatTopBar title="New chat" subtitle={`${usersList.length} users on NexTalk`} />
+      <ChatTopBar title="New chat" />
 
-      {/* Search */}
       <div className="px-4 py-3">
         <div
           className={`flex items-center gap-2 px-3 py-2 rounded-lg ${t(
@@ -60,7 +82,6 @@ const NewChat = () => {
         </div>
       </div>
 
-      {/* Action shortcuts */}
       <div className="px-2 pb-2">
         <ActionRow
           icon={UsersRound}
@@ -76,34 +97,42 @@ const NewChat = () => {
         />
       </div>
 
-      {/* Contacts on NexTalk */}
-      {contacts.length > 0 && (
-        <Section title="Contacts on NexTalk">
-          {contacts.map((u) => (
-            <UserRow key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
-          ))}
-        </Section>
-      )}
-
-      {/* Discover users (everyone else) */}
-      {others.length > 0 && (
-        <Section
-          title="Discover people on NexTalk"
-          subtitle="Anyone on NexTalk can be messaged."
-          icon={Sparkles}
-        >
-          {others.map((u) => (
-            <UserRow key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
-          ))}
-        </Section>
-      )}
-
-      {filtered.length === 0 && (
+      {noResults ? (
         <div className="px-6 py-16 text-center">
           <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
             No users match "{query}".
           </p>
         </div>
+      ) : (
+        <>
+          {displayedContacts.length > 0 && (
+            <Section title="Contacts on NexTalk">
+              {displayedContacts.map((u) => (
+                <UserRow key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
+              ))}
+            </Section>
+          )}
+
+          {others.length > 0 && (
+            <Section
+              title="Discover people on NexTalk"
+              subtitle="Anyone on NexTalk can be messaged."
+              icon={Sparkles}
+            >
+              {others.map((u) => (
+                <UserRow key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
+              ))}
+            </Section>
+          )}
+
+          {!query.trim() && contacts.length === 0 && (
+            <div className="px-6 py-16 text-center">
+              <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
+                No contacts yet. Search to discover people.
+              </p>
+            </div>
+          )}
+        </>
       )}
     </div>
     </ChatShell>
@@ -140,7 +169,7 @@ const ActionRow = ({ icon: Icon, label, subtitle, onClick }) => {
         "hover:bg-stone-100"
       )}`}
     >
-      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shrink-0">
+      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 flex items-center justify-center text-white shrink-0">
         <Icon className="w-5 h-5" />
       </div>
       <div className="flex-1 text-left min-w-0">
@@ -165,7 +194,7 @@ const UserRow = ({ user, onClick }) => {
         "hover:bg-stone-100"
       )}`}
     >
-      <Avatar initials={user.initials} color={user.color} size="md" status={user.status} />
+      <Avatar src={user.avatar_url} initials={user.initials} color={user.color} size="md" status={user.status} />
       <div className="flex-1 text-left min-w-0">
         <p className={`text-sm font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
           {user.display_name}
