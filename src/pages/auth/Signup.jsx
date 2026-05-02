@@ -30,6 +30,7 @@ const Signup = () => {
         navigate("/complete-profile");
       } else {
         setMessage("Check your email to confirm your account before signing in.");
+        setTimeout(() => navigate("/login"), 3000);
       }
     } catch (err) {
       setMessageType("error");
@@ -39,10 +40,6 @@ const Signup = () => {
     }
   };
 
-  const handleGoogleLogin = () => loginWithGoogle();
-
-  const handleGithubLogin = () => loginWithGithub();
-
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleSignup();
   };
@@ -51,7 +48,6 @@ const Signup = () => {
     <div className="min-h-screen flex">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-stone-950 via-stone-900 to-amber-950 items-center justify-center p-12 overflow-hidden">
-        {/* Background pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-20 left-20 w-72 h-72 bg-amber-400 rounded-full blur-3xl" />
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-amber-600 rounded-full blur-3xl" />
@@ -68,7 +64,6 @@ const Signup = () => {
             Start chatting with your team, share ideas, and build something amazing together.
           </p>
 
-          {/* Feature highlights */}
           <div className="mt-12 space-y-4 text-left">
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-4 py-3">
               <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
@@ -95,7 +90,6 @@ const Signup = () => {
       {/* Right Panel - Signup Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-8 bg-white">
         <div className="w-full max-w-md">
-          {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-8">
             <NexTalkLogo className="w-16 h-16" />
           </div>
@@ -113,8 +107,9 @@ const Signup = () => {
           {/* Social Login Buttons */}
           <div className="grid grid-cols-2 gap-3 mb-6">
             <button
-              onClick={handleGoogleLogin}
-              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 rounded-xl text-stone-700 font-medium hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 cursor-pointer"
+              onClick={loginWithGoogle}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 rounded-xl text-stone-700 font-medium hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -125,8 +120,9 @@ const Signup = () => {
               Google
             </button>
             <button
-              onClick={handleGithubLogin}
-              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 rounded-xl text-stone-700 font-medium hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 cursor-pointer"
+              onClick={loginWithGithub}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 px-4 py-3 border border-stone-200 rounded-xl text-stone-700 font-medium hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Github className="w-5 h-5" />
               GitHub
@@ -145,7 +141,6 @@ const Signup = () => {
 
           {/* Form Fields */}
           <div className="space-y-4">
-            {/* Full Name */}
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1.5">Full Name</label>
               <div className="relative">
@@ -161,7 +156,6 @@ const Signup = () => {
               </div>
             </div>
 
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1.5">Email</label>
               <div className="relative">
@@ -177,7 +171,6 @@ const Signup = () => {
               </div>
             </div>
 
-            {/* Password */}
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1.5">Password</label>
               <div className="relative">
@@ -230,7 +223,6 @@ const Signup = () => {
             )}
           </button>
 
-          {/* Footer */}
           <p className="mt-8 text-center text-xs text-stone-400">
             By creating an account, you agree to our{" "}
             <span className="text-stone-600 hover:text-amber-600 cursor-pointer transition-colors">Terms of Service</span>

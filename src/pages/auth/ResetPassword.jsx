@@ -3,17 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import NexTalkLogo from "../../components/NexTalkLogo";
 import supabase from "../../utils/supabaseClient";
+import useOnlineGuard from "../../hooks/useOnlineGuard";
+
+ const {checkOnline} =useOnlineGuard();
 
 const ResetPassword = () => {
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [password, setPassword]       = useState("");
+  const [confirm, setConfirm]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage]         = useState("");
   const [messageType, setMessageType] = useState("error");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(false);
   const navigate = useNavigate();
 
   const handleReset = async () => {
+    if (!checkOnline()) return;
+
     if (!password || !confirm) {
       setMessageType("error");
       setMessage("Please fill in both fields.");
@@ -29,18 +34,23 @@ const ResetPassword = () => {
       setMessage("Password must be at least 6 characters.");
       return;
     }
+
     setLoading(true);
     setMessage("");
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) {
-      setMessageType("error");
-      setMessage(error.message);
-    } else {
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw new Error(error.message);
+
       setMessageType("success");
       setMessage("Password updated successfully! Redirecting...");
       setTimeout(() => navigate("/login"), 2000);
+    } catch (err) {
+      setMessageType("error");
+      setMessage(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleKeyDown = (e) => {

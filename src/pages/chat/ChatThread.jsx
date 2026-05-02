@@ -6,7 +6,7 @@ import {
   ArrowLeft, Phone, Video, MoreVertical, Send, Paperclip, Smile,
   Check, CheckCheck, Reply, Forward, Copy, Star, Pin, Trash2,
   Edit2, Search, VolumeX, Volume2, Eraser, ShieldOff, Info, Mic, X, Lock,
-  FileText, StopCircle, Loader2,
+  FileText, StopCircle, Loader2, Play, Pause,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useUser } from "../../context/UserContext";
@@ -81,6 +81,93 @@ const formatRecordingTime = (secs) => {
   return `${m}:${s}`;
 };
 
+// ── Custom compact audio player ───────────────────────────────────────────
+const AudioPlayer = ({ src, mine, t }) => {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => setCurrent(a.currentTime || 0);
+    const onMeta = () => setDuration(isFinite(a.duration) ? a.duration : 0);
+    const onEnd = () => { setPlaying(false); setCurrent(0); };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("ended", onEnd);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("ended", onEnd);
+    };
+  }, []);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play(); setPlaying(true); }
+  };
+
+  const fmt = (s) => {
+    const m = Math.floor((s || 0) / 60);
+    const sec = Math.floor((s || 0) % 60);
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const seek = (e) => {
+    const a = audioRef.current;
+    if (!a || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    a.currentTime = Math.max(0, Math.min(1, pct)) * duration;
+  };
+
+  const pct = duration ? (current / duration) * 100 : 0;
+
+  const btnClass = mine
+    ? t("bg-amber-500/30 text-amber-100 hover:bg-amber-500/40", "bg-amber-500 text-white hover:bg-amber-600")
+    : t("bg-stone-700 text-stone-100 hover:bg-stone-600", "bg-stone-200 text-stone-700 hover:bg-stone-300");
+
+  const trackBg = mine
+    ? t("bg-amber-100/20", "bg-amber-200")
+    : t("bg-stone-700", "bg-stone-200");
+
+  const fillBg = mine ? t("bg-amber-300", "bg-amber-500") : t("bg-amber-400", "bg-amber-500");
+
+  const timeColor = mine ? t("text-amber-100/70", "text-stone-600") : t("text-stone-400", "text-stone-500");
+
+  return (
+    <div className="flex items-center gap-2 py-0.5 min-w-[200px]">
+      <audio ref={audioRef} src={src} preload="metadata" />
+      <button
+        onClick={toggle}
+        className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${btnClass}`}
+      >
+        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <div
+          onClick={seek}
+          className={`h-1 rounded-full cursor-pointer ${trackBg}`}
+        >
+          <div
+            className={`h-full rounded-full transition-[width] ${fillBg}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className={`text-[10px] tabular-nums ${timeColor}`}>
+          {fmt(current)} / {fmt(duration)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 // ── Media renderer inside a message bubble ────────────────────────────────
 const FileContent = ({ msg, mine, t, mediaOnly }) => {
   const type = msg.message_type;
@@ -94,7 +181,7 @@ const FileContent = ({ msg, mine, t, mediaOnly }) => {
         <img
           src={msg.file_url}
           alt="image"
-          className="rounded-xl max-w-[240px] w-full object-cover cursor-zoom-in"
+          className="rounded-lg max-w-[220px] w-full object-cover cursor-zoom-in"
         />
       </a>
     );
@@ -105,19 +192,16 @@ const FileContent = ({ msg, mine, t, mediaOnly }) => {
       <video
         src={msg.file_url}
         controls
-        className={`rounded-xl max-w-[260px] w-full ${gap}`}
+        className={`rounded-lg max-w-[240px] w-full ${gap}`}
       />
     );
   }
 
   if (type === "audio") {
     return (
-      <audio
-        src={msg.file_url}
-        controls
-        className={`w-full ${gap}`}
-        style={{ minWidth: 200 }}
-      />
+      <div className={gap}>
+        <AudioPlayer src={msg.file_url} mine={mine} t={t} />
+      </div>
     );
   }
 
@@ -127,11 +211,13 @@ const FileContent = ({ msg, mine, t, mediaOnly }) => {
       href={msg.file_url}
       target="_blank"
       rel="noreferrer"
-      className={`flex items-center gap-2 mb-2 px-2.5 py-2 rounded-lg ${
-        mine ? "bg-white/15 text-white" : t("bg-white/5 text-stone-100", "bg-stone-100 text-stone-700")
+      className={`flex items-center gap-2 mb-1 px-2 py-1.5 rounded-lg ${
+        mine
+          ? t("bg-amber-500/20 text-stone-100", "bg-amber-200/60 text-stone-800")
+          : t("bg-white/5 text-stone-100", "bg-stone-100 text-stone-700")
       }`}
     >
-      <FileText className={`w-4 h-4 shrink-0 ${mine ? "text-white/80" : "text-amber-500"}`} />
+      <FileText className={`w-4 h-4 shrink-0 ${mine ? t("text-amber-300", "text-amber-600") : "text-amber-500"}`} />
       <p className="text-xs font-medium truncate">
         {msg.original_name || msg.file_type || "Document"}
       </p>
@@ -154,14 +240,22 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv, currentUser }) 
     ? "relative cursor-pointer select-none"
     : mediaOnly
     ? "relative break-words cursor-pointer select-none"
-    : `relative px-3 py-2 rounded-2xl text-sm break-words cursor-pointer select-none ${
+    : `relative px-2.5 py-1.5 rounded-xl text-sm break-words cursor-pointer select-none ${
         mine
-          ? "bg-gradient-to-br from-amber-400 to-orange-400 text-white rounded-br-md"
+          ? t(
+              "bg-amber-500/20 text-stone-100 rounded-br-sm",
+              "bg-amber-100 text-stone-900 rounded-br-sm"
+            )
           : t(
-              "bg-stone-800 text-stone-100 rounded-bl-md",
-              "bg-white text-stone-900 rounded-bl-md border border-stone-200"
+              "bg-stone-800/90 text-stone-100 rounded-bl-sm",
+              "bg-white text-stone-900 rounded-bl-sm border border-stone-200"
             )
       }`;
+
+  const metaInsideMedia = mediaOnly;
+  const metaColor = mine
+    ? t("text-amber-100/70", "text-amber-700/70")
+    : t("text-stone-400", "text-stone-500");
 
   return (
     <div className={`flex gap-2 ${mine ? "justify-end" : "justify-start"}`}>
@@ -186,17 +280,20 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv, currentUser }) 
               "Unknown";
             const isMedia = msg.reply_to.message_type !== "text";
             const mediaLabel = { image: "📷 Photo", video: "🎥 Video", audio: "🎵 Voice message", document: "📄 Document" }[msg.reply_to.message_type] || "📎 Media";
+            const replyBg = mine
+              ? t("bg-amber-500/15", "bg-amber-200/60")
+              : t("bg-black/20", "bg-stone-100");
             return (
-              <div className={`mb-2 rounded-lg border-l-[3px] border-amber-400 overflow-hidden flex ${mine ? "bg-black/25" : t("bg-black/20", "bg-stone-200")}`}>
+              <div className={`mb-1.5 rounded-md border-l-2 border-amber-500 overflow-hidden flex ${replyBg}`}>
                 {isMedia && msg.reply_to.file_url && msg.reply_to.message_type === "image" && (
-                  <img src={msg.reply_to.file_url} alt="" className="w-12 h-12 object-cover shrink-0" />
+                  <img src={msg.reply_to.file_url} alt="" className="w-9 h-9 object-cover shrink-0" />
                 )}
-                <div className="px-2.5 py-1.5 min-w-0">
-                  <p className="text-[11px] font-semibold text-amber-400 truncate">{senderName}</p>
+                <div className="px-2 py-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-amber-500 truncate leading-tight">{senderName}</p>
                   {isMedia ? (
-                    <p className={`text-xs italic ${mine ? "text-white/70" : t("text-stone-400", "text-stone-400")}`}>{mediaLabel}</p>
+                    <p className={`text-[11px] italic leading-tight ${mine ? t("text-amber-100/70", "text-stone-600") : t("text-stone-400", "text-stone-500")}`}>{mediaLabel}</p>
                   ) : (
-                    <p className={`text-xs truncate ${mine ? "text-white/80" : t("text-stone-300", "text-stone-600")}`}>{msg.reply_to.text || "Message"}</p>
+                    <p className={`text-[11px] truncate leading-tight ${mine ? t("text-amber-100/80", "text-stone-700") : t("text-stone-300", "text-stone-600")}`}>{msg.reply_to.text || "Message"}</p>
                   )}
                 </div>
               </div>
@@ -206,14 +303,32 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv, currentUser }) 
           <FileContent msg={msg} mine={mine} t={t} mediaOnly={mediaOnly} />
 
           {msg.text && (
-            <p className={isEmojiOnly ? "text-4xl leading-none" : "leading-relaxed whitespace-pre-wrap"}>
+            <p className={isEmojiOnly ? "text-4xl leading-none" : "leading-snug whitespace-pre-wrap"}>
               {msg.text}
+              {!isEmojiOnly && !metaInsideMedia && (
+                <span className="inline-flex items-center gap-0.5 align-baseline ml-2 select-none">
+                  <span className={`text-[10px] tabular-nums ${metaColor}`}>{msg.time}</span>
+                  {mine && (msg.status === "read"
+                    ? <CheckCheck className={`w-3 h-3 ${t("text-amber-300", "text-amber-600")}`} />
+                    : <Check className={`w-3 h-3 ${metaColor}`} />
+                  )}
+                </span>
+              )}
             </p>
+          )}
+          {isEmojiOnly && (
+            <div className={`flex items-center gap-1 mt-0.5 text-[10px] ${metaColor} ${mine ? "justify-end" : "justify-start"}`}>
+              <span>{msg.time}</span>
+              {mine && (msg.status === "read"
+                ? <CheckCheck className={`w-3 h-3 ${t("text-amber-300", "text-amber-600")}`} />
+                : <Check className="w-3 h-3" />
+              )}
+            </div>
           )}
         </div>
 
         {msg.reactions?.length > 0 && (
-          <div className="flex gap-1 mt-1 px-1">
+          <div className="flex gap-1 mt-0.5 px-1">
             {msg.reactions.map((r, i) => (
               <span key={i} className={`text-xs px-1.5 py-0.5 rounded-full border ${t("bg-stone-800 border-white/10", "bg-white border-stone-200")}`}>
                 {r.emoji} {r.count}
@@ -222,13 +337,15 @@ const MessageBubble = ({ msg, mine, onLongPress, showName, conv, currentUser }) 
           </div>
         )}
 
-        <div className={`flex items-center gap-1 mt-0.5 px-1 text-[10px] ${t("text-stone-500", "text-stone-400")}`}>
-          <span>{msg.time}</span>
-          {mine && (msg.status === "read"
-            ? <CheckCheck className="w-3 h-3 text-amber-500" />
-            : <Check className="w-3 h-3" />
-          )}
-        </div>
+        {metaInsideMedia && (
+          <div className={`flex items-center gap-1 mt-0.5 px-1 text-[10px] ${metaColor}`}>
+            <span>{msg.time}</span>
+            {mine && (msg.status === "read"
+              ? <CheckCheck className={`w-3 h-3 ${t("text-amber-300", "text-amber-600")}`} />
+              : <Check className="w-3 h-3" />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -656,10 +773,10 @@ const ChatThread = () => {
         </div>
       </header>
 
-      <div style={wallpaper.style(dark)} className="flex-1 overflow-y-auto scrollbar-hide px-3 sm:px-6 py-3 space-y-2">
-        <div className="flex justify-center pt-1 pb-3">
-          <div className={`max-w-md inline-flex items-start gap-2 px-3.5 py-2 rounded-xl text-[11px] leading-snug text-center ${t("bg-amber-500/10 text-amber-200/90 border border-amber-500/15", "bg-amber-50 text-amber-800 border border-amber-200/70")}`}>
-            <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" />
+      <div style={wallpaper.style(dark)} className="flex-1 overflow-y-auto scrollbar-hide px-3 sm:px-6 py-2 space-y-1">
+        <div className="flex justify-center pt-1 pb-2">
+          <div className={`max-w-md inline-flex items-start gap-1.5 px-3 py-1.5 rounded-lg text-[10.5px] leading-snug text-center ${t("bg-amber-500/10 text-amber-200/90 border border-amber-500/15", "bg-amber-50/80 text-amber-800 border border-amber-200/60")}`}>
+            <Lock className="w-3 h-3 mt-0.5 shrink-0 text-amber-500" />
             <span>
               Messages are end-to-end encrypted. No one outside of this chat, not even NexTalk, can read or listen to them.{" "}
               <button onClick={() => navigate("/privacy")} className="font-semibold text-amber-600 hover:text-amber-500 underline underline-offset-2 cursor-pointer">Learn more</button>
@@ -732,7 +849,7 @@ const ChatThread = () => {
             <div className="flex-1" />
             <button
               onClick={stopRecording}
-              className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer"
+              className="p-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white cursor-pointer transition-colors"
             >
               <StopCircle className="w-5 h-5" />
             </button>
@@ -763,17 +880,17 @@ const ChatThread = () => {
               />
             </div>
             {uploading ? (
-              <div className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white">
+              <div className="p-2.5 rounded-full bg-amber-500 text-white">
                 <Loader2 className="w-4.5 h-4.5 animate-spin" />
               </div>
             ) : draft.trim() ? (
-              <button onClick={send} className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer">
+              <button onClick={send} className="p-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white cursor-pointer transition-colors">
                 <Send className="w-4.5 h-4.5" />
               </button>
             ) : (
               <button
                 onClick={startRecording}
-                className="p-2.5 rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-white cursor-pointer"
+                className="p-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white cursor-pointer transition-colors"
               >
                 <Mic className="w-4.5 h-4.5" />
               </button>
@@ -832,7 +949,7 @@ const ChatThread = () => {
               <button
                 onClick={confirmFileUpload}
                 disabled={uploading}
-                className="flex-1 py-2.5 rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {uploading ? "Uploading..." : "Send"}
               </button>

@@ -3,15 +3,20 @@ import { Link } from "react-router-dom";
 import { Mail, ArrowLeft, ArrowRight } from "lucide-react";
 import NexTalkLogo from "../../components/NexTalkLogo";
 import { forgotPassword } from "../../api/auth/login";
+import useOnlineGuard from "../../hooks/useOnlineGuard";
+
+ const {checkOnline} =useOnlineGuard();
 
 const ForgotPassword = () => {
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
+  const [email, setEmail]           = useState("");
+  const [message, setMessage]       = useState("");
   const [messageType, setMessageType] = useState("error");
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [sent, setSent]             = useState(false);
 
   const handleSubmit = async () => {
+    if (!checkOnline()) return;
+
     if (!email) {
       setMessageType("error");
       setMessage("Please enter your email address.");
@@ -24,7 +29,7 @@ const ForgotPassword = () => {
       setSent(true);
     } catch (err) {
       setMessageType("error");
-      setMessage(err.response?.data?.message || "Something went wrong. Please try again.");
+      setMessage(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -48,7 +53,8 @@ const ForgotPassword = () => {
             </div>
             <h2 className="text-2xl font-bold text-stone-900 mb-2">Check your email</h2>
             <p className="text-stone-500 text-sm mb-6">
-              We sent a password reset link to <span className="font-medium text-stone-700">{email}</span>.
+              We sent a password reset link to{" "}
+              <span className="font-medium text-stone-700">{email}</span>.
               Check your inbox and follow the link.
             </p>
             <Link

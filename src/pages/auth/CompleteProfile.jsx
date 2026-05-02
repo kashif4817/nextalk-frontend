@@ -1,46 +1,36 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AtSign,
-  User,
-  FileText,
-  ChevronDown,
-  ArrowRight,
-  SkipForward,
-  Sparkles,
-  Camera,
-  Lock,
+  AtSign, User, FileText, ChevronDown, ArrowRight,
+  SkipForward, Sparkles, Camera, Lock,
 } from "lucide-react";
 import supabase from "../../utils/supabaseClient";
 import NexTalkLogo from "../../components/NexTalkLogo";
+import useOnlineGuard from "../../hooks/useOnlineGuard";
+
+ const {checkOnline} =useOnlineGuard();
 
 const getInitials = (name) => {
   if (!name?.trim()) return "?";
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
 };
 
 const GENDER_OPTIONS = [
-  { value: "not_selected",     label: "Select gender" },
-  { value: "male",             label: "Male" },
-  { value: "female",           label: "Female" },
-  { value: "other",            label: "Other" },
+  { value: "not_selected",      label: "Select gender" },
+  { value: "male",              label: "Male" },
+  { value: "female",            label: "Female" },
+  { value: "other",             label: "Other" },
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
 const CompleteProfile = () => {
   const navigate = useNavigate();
-  const [authUser, setAuthUser] = useState(null);
-  const [initializing, setInitializing] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [authUser, setAuthUser]               = useState(null);
+  const [initializing, setInitializing]       = useState(true);
+  const [saving, setSaving]                   = useState(false);
+  const [error, setError]                     = useState("");
   const [usernameIsLocked, setUsernameIsLocked] = useState(false);
 
-  // Form state
   const [username, setUsername]       = useState("");
   const [displayName, setDisplayName] = useState("");
   const [about, setAbout]             = useState("");
@@ -49,18 +39,13 @@ const CompleteProfile = () => {
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigate("/login");
-        return;
-      }
+      if (!user) { navigate("/login"); return; }
       setAuthUser(user);
 
-      // Pre-fill display_name from OAuth metadata if available
       const meta = user.user_metadata ?? {};
       const metaName = meta.full_name || meta.name || "";
       if (metaName) setDisplayName(metaName);
 
-      // If profile already exists, pre-fill fields (user coming back to edit)
       const { data: profile } = await supabase
         .from("profiles")
         .select("*")
@@ -68,10 +53,7 @@ const CompleteProfile = () => {
         .maybeSingle();
 
       if (profile) {
-        if (profile.username) {
-          setUsername(profile.username);
-          setUsernameIsLocked(true);
-        }
+        if (profile.username)     { setUsername(profile.username); setUsernameIsLocked(true); }
         if (profile.display_name) setDisplayName(profile.display_name);
         if (profile.about)        setAbout(profile.about);
         if (profile.gender)       setGender(profile.gender);
@@ -92,38 +74,44 @@ const CompleteProfile = () => {
   };
 
   const handleSave = async () => {
+    if (!checkOnline()) return;
+
     const validationError = validate();
     if (validationError) { setError(validationError); return; }
 
     setSaving(true);
     setError("");
 
-    const { error: upsertError } = await supabase.from("profiles").upsert({
-      id:           authUser.id,
-      username:     username.trim().toLowerCase(),
-      display_name: displayName.trim() || null,
-      about:        about.trim() || null,
-      gender,
-    });
-
-    if (upsertError) {
-      if (upsertError.code === "23505" || upsertError.message?.includes("unique")) {
-        setError("This username is already taken. Try another one.");
-      } else {
-        setError(upsertError.message);
-      }
-      setSaving(false);
-      return;
-    }
-
-    // Sync display_name to auth.users metadata so user_metadata stays consistent
-    if (displayName.trim()) {
-      await supabase.auth.updateUser({
-        data: { display_name: displayName.trim(), full_name: displayName.trim() },
+    try {
+      const { error: upsertError } = await supabase.from("profiles").upsert({
+        id:           authUser.id,
+        username:     username.trim().toLowerCase(),
+        display_name: displayName.trim() || null,
+        about:        about.trim() || null,
+        gender,
       });
-    }
 
-    navigate("/chat");
+      if (upsertError) {
+        if (upsertError.code === "23505" || upsertError.message?.includes("unique")) {
+          setError("This username is already taken. Try another one.");
+        } else {
+          setError(upsertError.message);
+        }
+        return;
+      }
+
+      if (displayName.trim()) {
+        await supabase.auth.updateUser({
+          data: { display_name: displayName.trim(), full_name: displayName.trim() },
+        });
+      }
+
+      navigate("/chat");
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (initializing) {
@@ -141,14 +129,12 @@ const CompleteProfile = () => {
 
   return (
     <div className="min-h-screen flex">
-      {/* ─── Left panel — branding + live preview ─── */}
+      {/* Left Panel */}
       <div className="hidden lg:flex lg:w-5/12 xl:w-[440px] relative bg-gradient-to-br from-stone-950 via-stone-900 to-amber-950 flex-col items-center justify-center p-12 overflow-hidden shrink-0">
-        {/* Background glows */}
         <div className="absolute top-[-10%] left-[-10%] w-80 h-80 bg-amber-500/8 rounded-full blur-3xl animate-float-slow" />
         <div className="absolute bottom-[-10%] right-[-5%] w-72 h-72 bg-amber-600/5 rounded-full blur-3xl animate-float" />
 
         <div className="relative z-10 w-full max-w-xs">
-          {/* Logo */}
           <div className="flex justify-center mb-8">
             <NexTalkLogo className="w-20 h-20" animated />
           </div>
@@ -169,17 +155,13 @@ const CompleteProfile = () => {
             A complete profile helps your teammates find and recognise you across NexTalk.
           </p>
 
-          {/* Live profile preview card */}
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500 mb-4">
               Live preview
             </p>
-
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20">
-                <span className="text-stone-900 font-bold text-sm select-none">
-                  {avatarInitials}
-                </span>
+                <span className="text-stone-900 font-bold text-sm select-none">{avatarInitials}</span>
               </div>
               <div className="min-w-0">
                 <p className="font-semibold text-white text-sm truncate">
@@ -190,13 +172,11 @@ const CompleteProfile = () => {
                 </p>
               </div>
             </div>
-
             {about.trim() && (
               <p className="mt-3 text-stone-300 text-xs leading-relaxed border-t border-white/8 pt-3 line-clamp-3">
                 {about.trim()}
               </p>
             )}
-
             {gender !== "not_selected" && (
               <div className="mt-3 flex items-center gap-1.5">
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/8 text-stone-400 border border-white/10 capitalize">
@@ -212,16 +192,13 @@ const CompleteProfile = () => {
         </div>
       </div>
 
-      {/* ─── Right panel — form ─── */}
+      {/* Right Panel */}
       <div className="flex-1 flex flex-col min-h-screen overflow-y-auto bg-white">
-        {/* Top bar */}
         <div className="flex items-center justify-between px-6 pt-6 pb-2">
-          {/* Mobile logo */}
           <div className="lg:hidden">
             <NexTalkLogo className="w-10 h-10" />
           </div>
           <div className="hidden lg:block" />
-
           <button
             onClick={() => navigate("/chat")}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-all duration-200 cursor-pointer"
@@ -231,10 +208,8 @@ const CompleteProfile = () => {
           </button>
         </div>
 
-        {/* Form */}
         <div className="flex-1 flex items-center justify-center px-6 pb-12 pt-4">
           <div className="w-full max-w-md">
-            {/* Heading */}
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-stone-900">Complete your profile</h2>
               <p className="text-stone-500 mt-2 text-sm">
@@ -242,13 +217,10 @@ const CompleteProfile = () => {
               </p>
             </div>
 
-            {/* Avatar display */}
             <div className="flex justify-center mb-8">
               <div className="relative">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
-                  <span className="text-stone-900 font-bold text-xl select-none">
-                    {avatarInitials}
-                  </span>
+                  <span className="text-stone-900 font-bold text-xl select-none">{avatarInitials}</span>
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-stone-100 border-2 border-white flex items-center justify-center">
                   <Camera className="w-3.5 h-3.5 text-stone-400" />
@@ -256,9 +228,7 @@ const CompleteProfile = () => {
               </div>
             </div>
 
-            {/* Fields */}
             <div className="space-y-4">
-
               {/* Username */}
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1.5">
@@ -296,9 +266,7 @@ const CompleteProfile = () => {
 
               {/* Display Name */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1.5">
-                  Display Name
-                </label>
+                <label className="block text-sm font-medium text-stone-700 mb-1.5">Display Name</label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
                   <input
@@ -311,11 +279,9 @@ const CompleteProfile = () => {
                 </div>
               </div>
 
-              {/* About / Bio */}
+              {/* About */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1.5">
-                  About
-                </label>
+                <label className="block text-sm font-medium text-stone-700 mb-1.5">About</label>
                 <div className="relative">
                   <FileText className="absolute left-3.5 top-3.5 w-5 h-5 text-stone-400" />
                   <textarea
@@ -334,9 +300,7 @@ const CompleteProfile = () => {
 
               {/* Gender */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1.5">
-                  Gender
-                </label>
+                <label className="block text-sm font-medium text-stone-700 mb-1.5">Gender</label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 pointer-events-none" />
                   <select
@@ -345,9 +309,7 @@ const CompleteProfile = () => {
                     className="w-full appearance-none pl-11 pr-10 py-3 border border-stone-200 rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all duration-200 cursor-pointer"
                   >
                     {GENDER_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 pointer-events-none" />
@@ -355,14 +317,12 @@ const CompleteProfile = () => {
               </div>
             </div>
 
-            {/* Error */}
             {error && (
               <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-100">
                 <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 
-            {/* Save button */}
             <button
               onClick={handleSave}
               disabled={saving}
