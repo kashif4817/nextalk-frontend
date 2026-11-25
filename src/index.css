@@ -280,3 +280,52 @@ body::-webkit-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 113, 108, 0.4) transparent;
 }
+
+/* ─── Chat text size (Settings → Chats) ───
+   Set on <html data-chat-text="…"> by PreferencesProvider. */
+.chat-text {
+  font-size: 0.875rem;
+  line-height: 1.625;
+}
+[data-chat-text="small"] .chat-text {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+[data-chat-text="large"] .chat-text {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* ─── Loading skeletons (components/chat/Skeleton.jsx) ─── */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+.skeleton-dark::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+}
+
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+
+/* ─── Temp chat: never print the conversation ─── */
+@media print {
+  [data-no-print] {
+    display: none !important;
+  }
+}

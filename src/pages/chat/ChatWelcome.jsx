@@ -2,6 +2,7 @@ import { Lock, MessageSquarePlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import NexTalkLogo from "../../components/NexTalkLogo";
+import { TempChatButton } from "../../components/chat/TempChatLauncher";
 
 // Empty pane shown on desktop split view when no chat is selected.
 const ChatWelcome = () => {
@@ -30,6 +31,7 @@ const ChatWelcome = () => {
         <MessageSquarePlus className="w-4 h-4" />
         Find people to chat with
       </button>
+      <TempChatButton className="mt-4" />
       <div
         className={`mt-10 flex items-center gap-2 text-xs ${t(
           "text-stone-500",

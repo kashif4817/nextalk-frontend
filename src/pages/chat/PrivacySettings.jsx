@@ -2,11 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, ShieldOff, Check } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ME } from "../../data/mockChatData";
+import toast from "react-hot-toast";
+import { useUser } from "../../context/UserContext";
+import { useBlocked } from "../../hooks/useBlocked";
+import { updatePrivacy } from "../../services/users";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { Bone } from "../../components/chat/Skeleton";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
-import { comingSoon } from "../../utils/toast";
 
 const PRIVACY_FIELDS = [
   { key: "last_seen_privacy", label: "Last seen & online", desc: "Who can see your last seen and online status" },
@@ -24,13 +27,40 @@ const OPTIONS = [
 const PrivacySettings = () => {
   const { t } = useTheme();
   const navigate = useNavigate();
-  const [privacy, setPrivacy] = useState({
-    last_seen_privacy: ME.last_seen_privacy,
-    profile_photo_privacy: ME.profile_photo_privacy,
-    about_privacy: ME.about_privacy,
-    read_receipts_privacy: ME.read_receipts_privacy,
-  });
+  const { profile, profileLoading, refreshProfile } = useUser();
+  const { blocked } = useBlocked();
   const [editing, setEditing] = useState(null);
+  // Only what this session changed; everything else reads from the profile.
+  const [overrides, setOverrides] = useState({});
+
+  // Derived, so a late-arriving profile needs no setState in an effect.
+  // "everyone" is the server-side default for an unset column.
+  const valueOf = (key) =>
+    overrides[key] ?? profile?.[key] ?? "everyone";
+
+  const privacy = {
+    last_seen_privacy: valueOf("last_seen_privacy"),
+    profile_photo_privacy: valueOf("profile_photo_privacy"),
+    about_privacy: valueOf("about_privacy"),
+    read_receipts_privacy: valueOf("read_receipts_privacy"),
+  };
+
+  const choose = async (field, value) => {
+    setOverrides((o) => ({ ...o, [field.key]: value }));
+    setEditing(null);
+    try {
+      await updatePrivacy({ [field.key]: value });
+      refreshProfile();
+    } catch (e) {
+      // Drop the override so the row falls back to the stored value.
+      setOverrides((o) => {
+        const next = { ...o };
+        delete next[field.key];
+        return next;
+      });
+      toast.error(e.message || `Could not update ${field.label.toLowerCase()}`);
+    }
+  };
 
   const labelFor = (val) => OPTIONS.find((o) => o.id === val)?.label;
 
@@ -52,9 +82,13 @@ const PrivacySettings = () => {
           >
             <div className="flex-1 text-left min-w-0">
               <p className={`text-sm ${t("text-stone-100", "text-stone-900")}`}>{f.label}</p>
-              <p className={`text-xs ${t("text-stone-400", "text-stone-500")}`}>
-                {labelFor(privacy[f.key])}
-              </p>
+              {profileLoading ? (
+                <Bone className="mt-1.5 h-2.5 w-16" />
+              ) : (
+                <p className={`text-xs ${t("text-stone-400", "text-stone-500")}`}>
+                  {labelFor(privacy[f.key])}
+                </p>
+              )}
             </div>
             <ChevronRight className={`w-4 h-4 ${t("text-stone-600", "text-stone-300")}`} />
           </button>
@@ -69,7 +103,9 @@ const PrivacySettings = () => {
           <ShieldOff className={`w-5 h-5 ${t("text-stone-400", "text-stone-500")}`} />
           <div className="flex-1 text-left">
             <p className={`text-sm ${t("text-stone-100", "text-stone-900")}`}>Blocked contacts</p>
-            <p className={`text-xs ${t("text-stone-400", "text-stone-500")}`}>0 contacts</p>
+            <p className={`text-xs ${t("text-stone-400", "text-stone-500")}`}>
+              {blocked.length} {blocked.length === 1 ? "contact" : "contacts"}
+            </p>
           </div>
           <ChevronRight className={`w-4 h-4 ${t("text-stone-600", "text-stone-300")}`} />
         </button>
@@ -81,11 +117,7 @@ const PrivacySettings = () => {
             key={o.id}
             icon={privacy[editing?.key] === o.id ? Check : null}
             label={o.label}
-            onClick={() => {
-              setPrivacy((p) => ({ ...p, [editing.key]: o.id }));
-              comingSoon(`${editing.label} controls`);
-              setEditing(null);
-            }}
+            onClick={() => choose(editing, o.id)}
           />
         ))}
       </BottomSheet>

@@ -1,20 +1,39 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, X, Sparkles, MessageSquare, UserPlus, TrendingUp } from "lucide-react";
+import { Search, X, Sparkles, MessageSquare, UserPlus, Users, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, BLOCKED_USER_IDS } from "../../data/mockChatData";
+import { usePeople } from "../../hooks/usePeople";
+import { useContacts } from "../../hooks/useContacts";
+import { openDM } from "../../services/conversations";
+import { addContact } from "../../services/contacts";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { CardGridSkeleton } from "../../components/chat/Skeleton";
+
+const GRID = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3";
 
 const Explore = () => {
   const { t } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  // "<userId>:message" | "<userId>:add" while a card action is in flight.
+  const [busy, setBusy] = useState(null);
+
+  const { people, loading, error, reload } = usePeople(query);
+  const { contacts, reload: reloadContacts } = useContacts();
+
+  // /users/all and /users/search already exclude blocked users in both
+  // directions; `is_contact` is the one thing they do not tell us.
+  const contactIds = useMemo(
+    () => new Set(contacts.map((c) => c.id)),
+    [contacts],
+  );
 
   const allUsers = useMemo(
-    () => ALL_USERS.filter((u) => !BLOCKED_USER_IDS.includes(u.id)),
-    []
+    () => people.map((u) => ({ ...u, is_contact: contactIds.has(u.id) })),
+    [people, contactIds],
   );
 
   const filtered = useMemo(() => {
@@ -22,38 +41,90 @@ const Explore = () => {
     if (!q) return allUsers;
     return allUsers.filter(
       (u) =>
-        u.display_name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q) ||
+        u.display_name?.toLowerCase().includes(q) ||
+        u.username?.toLowerCase().includes(q) ||
         u.about?.toLowerCase().includes(q)
     );
   }, [query, allUsers]);
 
-  const suggestions = filtered.filter((u) => !u.is_contact).slice(0, 8);
-  const trending = filtered.filter((u) => u.status === "online").slice(0, 8);
-  const others = filtered;
+  // Each person lands in exactly one card group; "Active now" is just a
+  // glanceable avatar strip on top.
+  const online = filtered.filter((u) => u.status === "online");
+  const suggestions = filtered.filter((u) => !u.is_contact);
+  const yourContacts = filtered.filter((u) => u.is_contact);
+
+  const count = allUsers.length;
+  const openProfile = (u) => navigate(`/chat/profile/${u.id}`);
+
+  const message = async (u) => {
+    if (busy) return;
+    setBusy(`${u.id}:message`);
+    try {
+      const conv = await openDM(u.id);
+      if (conv?.id) navigate(`/chat/${conv.id}`);
+      else toast.error("Could not open that chat");
+    } catch (e) {
+      toast.error(e.message || "Could not open that chat");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const add = async (u) => {
+    if (busy) return;
+    setBusy(`${u.id}:add`);
+    try {
+      await addContact(u.id);
+      await reloadContacts();
+      toast.success(`${u.display_name} added to contacts`);
+    } catch (e) {
+      toast.error(e.message || "Could not add contact");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const renderGrid = (list) => (
+    <div className={GRID}>
+      {list.map((u) => (
+        <PersonCard
+          key={u.id}
+          user={u}
+          busy={busy}
+          onOpen={() => openProfile(u)}
+          onMessage={() => message(u)}
+          onAdd={() => add(u)}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <ChatShell active="explore" fullWidth>
       <div className={`min-h-screen ${t("text-stone-100", "text-stone-900")}`}>
         <ChatTopBar
           title="Explore"
-          subtitle={`Discover ${allUsers.length} people on NexTalk`}
+          subtitle={
+            loading && !count
+              ? "Finding people…"
+              : `${count} ${count === 1 ? "person" : "people"} on NexTalk`
+          }
         />
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5">
           {/* Search bar */}
           <div
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-full ${t(
-              "bg-white/5",
-              "bg-white border border-stone-200"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${t(
+              "bg-white/5 border border-white/5 focus-within:border-amber-500/40",
+              "bg-white border border-stone-200 focus-within:border-amber-400"
             )}`}
           >
-            <Search className={`w-4 h-4 ${t("text-stone-500", "text-stone-400")}`} />
+            <Search className={`w-4 h-4 shrink-0 ${t("text-stone-500", "text-stone-400")}`} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search people, usernames, bios..."
-              className={`flex-1 bg-transparent outline-none text-sm ${t(
+              className={`flex-1 min-w-0 bg-transparent outline-none text-sm ${t(
                 "text-stone-200 placeholder-stone-600",
                 "text-stone-700 placeholder-stone-400"
               )}`}
@@ -61,60 +132,67 @@ const Explore = () => {
             {query && (
               <button
                 onClick={() => setQuery("")}
-                className={t("text-stone-500", "text-stone-400")}
+                aria-label="Clear search"
+                className={`cursor-pointer ${t("text-stone-500 hover:text-stone-300", "text-stone-400 hover:text-stone-600")}`}
               >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          {filtered.length === 0 ? (
-            <div className="py-20 text-center">
-              <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
-                No users match "{query}".
-              </p>
-            </div>
+          {loading ? (
+            <CardGridSkeleton gridClassName={GRID} />
+          ) : error ? (
+            <EmptyState text={error}>
+              <button onClick={reload} className="mt-3 text-sm font-medium text-amber-500 cursor-pointer">
+                Try again
+              </button>
+            </EmptyState>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              text={query ? `No one matches "${query}".` : "No one else is on NexTalk yet."}
+            />
+          ) : query ? (
+            <Section title="Results" count={filtered.length}>
+              {renderGrid(filtered)}
+            </Section>
           ) : (
             <>
-              {!query && suggestions.length > 0 && (
-                <Section title="Suggested for you" icon={Sparkles}>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    {suggestions.map((u) => (
-                      <SuggestCard
+              {online.length > 0 && (
+                <Section title="Active now" count={online.length} dot>
+                  <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1">
+                    {online.map((u) => (
+                      <button
                         key={u.id}
-                        user={u}
-                        onClick={() => navigate(`/chat/profile/${u.id}`)}
-                      />
+                        onClick={() => openProfile(u)}
+                        className="w-16 shrink-0 flex flex-col items-center gap-1.5 cursor-pointer group"
+                      >
+                        <Avatar initials={u.initials} color={u.color} size="md" status={u.status} />
+                        <span
+                          className={`w-full text-center text-[11px] truncate ${t(
+                            "text-stone-300 group-hover:text-white",
+                            "text-stone-600 group-hover:text-stone-900"
+                          )}`}
+                        >
+                          {u.display_name?.split(" ")[0]}
+                        </span>
+                      </button>
                     ))}
                   </div>
                 </Section>
               )}
 
-              {!query && trending.length > 0 && (
-                <Section title="Active now" icon={TrendingUp}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {trending.map((u) => (
-                      <UserCard
-                        key={u.id}
-                        user={u}
-                        onClick={() => navigate(`/chat/profile/${u.id}`)}
-                      />
-                    ))}
-                  </div>
+              {suggestions.length > 0 && (
+                <Section title="Suggested for you" icon={Sparkles} count={suggestions.length}>
+                  {renderGrid(suggestions)}
                 </Section>
               )}
 
-              <Section title={query ? "Results" : "All people"}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {others.map((u) => (
-                    <UserCard
-                      key={u.id}
-                      user={u}
-                      onClick={() => navigate(`/chat/profile/${u.id}`)}
-                    />
-                  ))}
-                </div>
-              </Section>
+              {yourContacts.length > 0 && (
+                <Section title="Your contacts" icon={Users} count={yourContacts.length}>
+                  {renderGrid(yourContacts)}
+                </Section>
+              )}
             </>
           )}
         </div>
@@ -123,89 +201,103 @@ const Explore = () => {
   );
 };
 
-const Section = ({ title, icon: Icon, children }) => {
+const EmptyState = ({ text, children }) => {
   const { t } = useTheme();
   return (
-    <div className="mt-6">
-      <div className="pb-3 flex items-center gap-2">
+    <div className="py-20 text-center">
+      <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>{text}</p>
+      {children}
+    </div>
+  );
+};
+
+const Section = ({ title, icon: Icon, count, dot, children }) => {
+  const { t } = useTheme();
+  return (
+    <section className="mt-7">
+      <div className="mb-3 flex items-center gap-2">
+        {dot && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
         {Icon && <Icon className="w-4 h-4 text-amber-500" />}
-        <p
+        <h2
           className={`text-xs font-semibold uppercase tracking-wider ${t(
             "text-stone-400",
             "text-stone-500"
           )}`}
         >
           {title}
-        </p>
+        </h2>
+        {count != null && (
+          <span className={`text-xs ${t("text-stone-600", "text-stone-400")}`}>· {count}</span>
+        )}
       </div>
       {children}
+    </section>
+  );
+};
+
+const PersonCard = ({ user, busy, onOpen, onMessage, onAdd }) => {
+  const { t } = useTheme();
+  const messaging = busy === `${user.id}:message`;
+  const adding = busy === `${user.id}:add`;
+
+  return (
+    <div
+      className={`rounded-2xl p-4 flex flex-col items-center text-center transition-colors ${t(
+        "bg-white/5 border border-white/5 hover:border-white/10",
+        "bg-white border border-stone-200 hover:border-stone-300 hover:shadow-sm"
+      )}`}
+    >
+      <button onClick={onOpen} className="w-full flex flex-col items-center gap-2 cursor-pointer group">
+        <Avatar initials={user.initials} color={user.color} size="lg" status={user.status} />
+        <div className="w-full min-w-0">
+          <p
+            className={`text-sm font-semibold truncate transition-colors ${t(
+              "text-stone-100 group-hover:text-amber-400",
+              "text-stone-900 group-hover:text-amber-600"
+            )}`}
+          >
+            {user.display_name}
+          </p>
+          <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
+            @{user.username}
+          </p>
+        </div>
+      </button>
+
+      {/* Fixed height so cards line up whether or not there's a bio */}
+      <p className={`mt-1 h-4 w-full text-[11px] truncate ${t("text-stone-500", "text-stone-400")}`}>
+        {user.about || ""}
+      </p>
+
+      <div className="mt-3 w-full flex gap-2">
+        <button
+          onClick={onMessage}
+          disabled={!!busy}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-semibold transition-colors cursor-pointer disabled:cursor-default"
+        >
+          {messaging ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <MessageSquare className="w-3.5 h-3.5" />
+          )}
+          Message
+        </button>
+        {!user.is_contact && (
+          <button
+            onClick={onAdd}
+            disabled={!!busy}
+            aria-label={`Add ${user.display_name} to contacts`}
+            title="Add to contacts"
+            className={`w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-lg border transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-default ${t(
+              "border-white/10 text-stone-300 hover:bg-white/5",
+              "border-stone-200 text-stone-600 hover:bg-stone-50"
+            )}`}
+          >
+            {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+          </button>
+        )}
+      </div>
     </div>
-  );
-};
-
-const SuggestCard = ({ user, onClick }) => {
-  const { t } = useTheme();
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-2xl p-3 flex flex-col items-center gap-2 cursor-pointer transition-all ${t(
-        "bg-white/5 hover:bg-white/10 border border-white/5",
-        "bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300"
-      )}`}
-    >
-      <Avatar initials={user.initials} color={user.color} size="lg" status={user.status} />
-      <div className="text-center min-w-0 w-full">
-        <p
-          className={`text-xs font-semibold truncate ${t(
-            "text-stone-100",
-            "text-stone-900"
-          )}`}
-        >
-          {user.display_name}
-        </p>
-        <p className={`text-[10px] truncate ${t("text-stone-400", "text-stone-500")}`}>
-          @{user.username}
-        </p>
-      </div>
-      <span className="w-full text-center px-2 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors">
-        Message
-      </span>
-    </button>
-  );
-};
-
-const UserCard = ({ user, onClick }) => {
-  const { t } = useTheme();
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${t(
-        "bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/5",
-        "bg-white hover:bg-stone-100 border border-stone-200"
-      )}`}
-    >
-      <Avatar initials={user.initials} color={user.color} size="md" status={user.status} />
-      <div className="flex-1 text-left min-w-0">
-        <p
-          className={`text-sm font-semibold truncate ${t(
-            "text-stone-100",
-            "text-stone-900"
-          )}`}
-        >
-          {user.display_name}
-        </p>
-        <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
-          {user.about || `@${user.username}`}
-        </p>
-      </div>
-      {user.is_contact ? (
-        <MessageSquare className="w-4 h-4 text-amber-500 shrink-0" />
-      ) : (
-        <UserPlus
-          className={`w-4 h-4 shrink-0 ${t("text-stone-500", "text-stone-400")}`}
-        />
-      )}
-    </button>
   );
 };
 

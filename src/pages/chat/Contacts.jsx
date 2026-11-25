@@ -2,17 +2,18 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, UserPlus, X } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS } from "../../data/mockChatData";
+import { useContacts } from "../../hooks/useContacts";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { ListSkeleton } from "../../components/chat/Skeleton";
 
 const Contacts = () => {
   const { t } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
-  const contacts = useMemo(() => ALL_USERS.filter((u) => u.is_contact), []);
+  const { contacts, loading, error, reload } = useContacts();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -28,7 +29,7 @@ const Contacts = () => {
   const grouped = useMemo(() => {
     const map = {};
     filtered.forEach((u) => {
-      const key = u.display_name[0].toUpperCase();
+      const key = (u.display_name?.[0] || "#").toUpperCase();
       if (!map[key]) map[key] = [];
       map[key].push(u);
     });
@@ -76,7 +77,16 @@ const Contacts = () => {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <ListSkeleton />
+      ) : error ? (
+        <div className="px-6 py-16 text-center">
+          <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>{error}</p>
+          <button onClick={reload} className="mt-3 text-sm font-medium text-amber-500 cursor-pointer">
+            Try again
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="px-6 py-16 text-center">
           <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
             {query ? `No contacts match "${query}".` : "No contacts yet."}

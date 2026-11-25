@@ -12,27 +12,20 @@ import {
 } from "lucide-react";
 import supabase from "../../utils/supabaseClient";
 import NexTalkLogo from "../../components/NexTalkLogo";
-
-const getInitials = (name) => {
-  if (!name?.trim()) return "?";
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
-};
-
-const GENDER_OPTIONS = [
-  { value: "not_selected",     label: "Select gender" },
-  { value: "male",             label: "Male" },
-  { value: "female",           label: "Female" },
-  { value: "other",            label: "Other" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
-];
+import { useUser } from "../../context/UserContext";
+import {
+  ABOUT_MAX,
+  DISPLAY_NAME_MAX,
+  GENDER_OPTIONS,
+  buildProfilePayload,
+  describeProfileError,
+  getInitials,
+  validateUsername,
+} from "../../utils/profile";
 
 const CompleteProfile = () => {
   const navigate = useNavigate();
+  const { refreshProfile } = useUser();
   const [authUser, setAuthUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,40 +70,31 @@ const CompleteProfile = () => {
     init();
   }, []);
 
-  const validate = () => {
-    const u = username.trim();
-    if (!u) return "Username is required.";
-    if (u.length < 3) return "Username must be at least 3 characters.";
-    if (!/^[a-zA-Z0-9_.]+$/.test(u))
-      return "Username can only contain letters, numbers, dots, and underscores.";
-    return null;
-  };
-
   const handleSave = async () => {
-    const validationError = validate();
+    const validationError = validateUsername(username);
     if (validationError) { setError(validationError); return; }
 
     setSaving(true);
     setError("");
 
-    const { error: upsertError } = await supabase.from("profiles").upsert({
-      id:           authUser.id,
-      username:     username.trim().toLowerCase(),
-      display_name: displayName.trim() || null,
-      about:        about.trim() || null,
-      gender,
-    });
+    const { error: upsertError } = await supabase.from("profiles").upsert(
+      buildProfilePayload({
+        id: authUser.id,
+        username,
+        displayName,
+        about,
+        gender,
+      })
+    );
 
     if (upsertError) {
-      if (upsertError.code === "23505" || upsertError.message?.includes("unique")) {
-        setError("This username is already taken. Try another one.");
-      } else {
-        setError(upsertError.message);
-      }
+      setError(describeProfileError(upsertError));
       setSaving(false);
       return;
     }
 
+    // Let the rest of the app see the new profile without a reload.
+    refreshProfile();
     navigate("/chat");
   };
 
@@ -282,6 +266,7 @@ const CompleteProfile = () => {
                     type="text"
                     placeholder="How should we call you?"
                     value={displayName}
+                    maxLength={DISPLAY_NAME_MAX}
                     onChange={(e) => setDisplayName(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all duration-200"
                   />
@@ -300,11 +285,11 @@ const CompleteProfile = () => {
                     value={about}
                     onChange={(e) => setAbout(e.target.value)}
                     rows={3}
-                    maxLength={160}
+                    maxLength={ABOUT_MAX}
                     className="w-full pl-11 pr-4 py-3 border border-stone-200 rounded-xl text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all duration-200 resize-none"
                   />
                   <span className="absolute bottom-3 right-3 text-[10px] text-stone-300 select-none">
-                    {about.length}/160
+                    {about.length}/{ABOUT_MAX}
                   </span>
                 </div>
               </div>

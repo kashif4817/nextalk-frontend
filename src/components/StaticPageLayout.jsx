@@ -46,10 +46,10 @@ const StaticPageLayout = ({ title, subtitle, badge, children }) => {
                 <span className="hidden sm:inline">Back to Home</span>
               </Link>
               <Link
-                to="/signup"
+                to="/login"
                 className="px-4 py-2 text-sm font-semibold text-stone-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-lg hover:from-amber-300 hover:to-amber-400 transition-all shadow-sm shadow-amber-500/20"
               >
-                Get Started
+                Sign in
               </Link>
             </div>
           </div>

@@ -23,6 +23,7 @@ import {
   Sun,
   Moon,
   ArrowDown,
+  Ghost,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import NexTalkLogo from "../components/NexTalkLogo";
@@ -102,7 +103,7 @@ const steps = [
   {
     step: "01",
     title: "Create your account",
-    description: "Sign up in seconds with email, Google, or GitHub. No credit card needed.",
+    description: "Sign up in seconds with Google or GitHub. No passwords, no credit card.",
     icon: Users,
   },
   {
@@ -309,16 +310,18 @@ const Home = () => {
               </button>
 
               <Link
-                to="/login"
-                className={`px-4 py-2 text-sm font-medium transition-colors ${t(
-                  "text-stone-300 hover:text-white",
-                  "text-stone-600 hover:text-stone-900"
+                to="/temp"
+                className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg border transition-all duration-200 ${t(
+                  "text-amber-400 border-amber-500/30 hover:bg-amber-500/10",
+                  "text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
                 )}`}
               >
-                Sign in
+                <Ghost className="w-4 h-4" />
+                Temp chat
               </Link>
+
               <Link
-                to="/signup"
+                to="/login"
                 className="px-5 py-2.5 text-sm font-semibold text-stone-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-lg hover:from-amber-300 hover:to-amber-400 transition-all duration-200 shadow-lg shadow-amber-500/20"
               >
                 Get Started Free
@@ -367,19 +370,20 @@ const Home = () => {
                   {link.label}
                 </a>
               ))}
-              <div className={`pt-4 mt-4 border-t grid grid-cols-2 gap-3 ${t("border-white/5", "border-stone-200")}`}>
+              <div className={`pt-4 mt-4 border-t space-y-2 ${t("border-white/5", "border-stone-200")}`}>
                 <Link
-                  to="/login"
-                  className={`px-4 py-3 text-sm font-medium border rounded-xl text-center transition-colors ${t(
-                    "text-stone-300 border-white/10 hover:bg-white/5",
-                    "text-stone-600 border-stone-200 hover:bg-stone-100"
+                  to="/temp"
+                  className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold rounded-xl border ${t(
+                    "text-amber-400 border-amber-500/30",
+                    "text-amber-700 border-amber-300 bg-amber-50"
                   )}`}
                 >
-                  Sign in
+                  <Ghost className="w-4 h-4" />
+                  Temp chat, no sign-up
                 </Link>
                 <Link
-                  to="/signup"
-                  className="px-4 py-3 text-sm font-semibold text-stone-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-xl text-center"
+                  to="/login"
+                  className="block px-4 py-3 text-sm font-semibold text-stone-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-xl text-center"
                 >
                   Get Started
                 </Link>
@@ -492,7 +496,7 @@ const Home = () => {
             {/* CTA */}
             <div className="animate-fade-in-up delay-300 mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
-                to="/signup"
+                to="/login"
                 className="group w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-semibold text-stone-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-xl hover:from-amber-300 hover:to-amber-400 shadow-2xl shadow-amber-500/25 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
               >
                 Start chatting — it's free
@@ -508,6 +512,30 @@ const Home = () => {
                 <Play className="w-4 h-4" />
                 See how it works
               </a>
+            </div>
+
+            {/* Anonymous, no-account chat */}
+            <div className="animate-fade-in-up delay-300 mt-6 flex justify-center">
+              <Link
+                to="/temp"
+                className={`group inline-flex items-center gap-3 pl-2 pr-5 py-2 rounded-full border transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${t(
+                  "bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15",
+                  "bg-amber-50 border-amber-200 hover:bg-amber-100 hover:border-amber-300"
+                )}`}
+              >
+                <span className="w-9 h-9 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/30">
+                  <Ghost className="w-4.5 h-4.5" />
+                </span>
+                <span className="text-left">
+                  <span className={`block text-sm font-semibold ${t("text-amber-300", "text-amber-800")}`}>
+                    Start a temp chat
+                  </span>
+                  <span className={`block text-xs ${t("text-stone-400", "text-stone-500")}`}>
+                    No sign-up. Disappears when you leave.
+                  </span>
+                </span>
+                <ArrowRight className={`w-4 h-4 group-hover:translate-x-0.5 transition-transform ${t("text-amber-400", "text-amber-600")}`} />
+              </Link>
             </div>
 
             {/* Social proof */}
@@ -1022,17 +1050,11 @@ const Home = () => {
               </p>
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link
-                  to="/signup"
+                  to="/login"
                   className="group w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-bold text-amber-600 bg-white rounded-xl hover:bg-amber-50 shadow-2xl shadow-amber-900/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   Get started for free
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-                </Link>
-                <Link
-                  to="/login"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-semibold text-white border-2 border-white/30 rounded-xl hover:bg-white/10 transition-all duration-200"
-                >
-                  Sign in to your account
                 </Link>
               </div>
             </div>

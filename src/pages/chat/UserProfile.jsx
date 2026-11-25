@@ -20,10 +20,17 @@ import {
   MoreVertical,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, CONVERSATIONS, getUser } from "../../data/mockChatData";
+import toast from "react-hot-toast";
+import { useProfileById } from "../../hooks/useProfileById";
+import { useContacts } from "../../hooks/useContacts";
+import { useBlocked } from "../../hooks/useBlocked";
+import * as contactsApi from "../../services/contacts";
+import * as blocksApi from "../../services/blocks";
+import { openDM } from "../../services/conversations";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { ProfileSkeleton } from "../../components/chat/Skeleton";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
 import { comingSoon } from "../../utils/toast";
 
@@ -31,15 +38,38 @@ const UserProfile = () => {
   const { t } = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
-  const initial = getUser(id);
-  const [user, setUser] = useState(initial);
+  const { person, loading, error, reload } = useProfileById(id);
+  const { contacts, reload: reloadContacts } = useContacts();
+  const { blocked, reload: reloadBlocked } = useBlocked();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Relationship flags live in the contacts/blocked lists, not on the profile.
+  const blockRow = blocked.find((b) => b.id === id) || null;
+  const user = person
+    ? {
+        ...person,
+        is_contact: contacts.some((c) => c.id === id),
+        is_blocked: Boolean(blockRow),
+      }
+    : null;
+
+  if (loading) {
+    return (
+      <ChatShell active="chats">
+        <div className={`min-h-screen ${t("bg-stone-950 text-stone-100", "bg-stone-50 text-stone-900")}`}>
+          <ChatTopBar title="Profile" />
+          <ProfileSkeleton />
+        </div>
+      </ChatShell>
+    );
+  }
 
   if (!user) {
     return (
       <ChatShell active="chats">
         <div className={`min-h-screen flex flex-col items-center justify-center ${t("bg-stone-950 text-stone-300", "bg-stone-50 text-stone-700")}`}>
-          <p className="mb-4">User not found.</p>
+          <p className="mb-4">{error || "User not found."}</p>
           <button onClick={() => navigate("/chat")} className="text-amber-500 underline">
             Back to chats
           </button>
@@ -48,16 +78,49 @@ const UserProfile = () => {
     );
   }
 
-  const startChat = () => {
-    // Find existing DM or create one (UI only — id will be conv-{userId})
-    const existing = CONVERSATIONS.find((c) => !c.is_group && c.other_user_id === user.id);
-    navigate(existing ? `/chat/${existing.id}` : `/chat/conv-${user.id}`);
+  // The API returns the existing DM if there is one, otherwise it creates it.
+  const startChat = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const conv = await openDM(user.id);
+      if (conv?.id) navigate(`/chat/${conv.id}`);
+      else toast.error("Could not open that chat");
+    } catch (e) {
+      toast.error(e.message || "Could not open that chat");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const toggleContact = () =>
-    setUser((u) => ({ ...u, is_contact: !u.is_contact }));
-  const toggleBlock = () =>
-    setUser((u) => ({ ...u, is_blocked: !u.is_blocked }));
+  const toggleContact = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (user.is_contact) await contactsApi.removeContact(user.id);
+      else await contactsApi.addContact(user.id);
+      reloadContacts();
+    } catch (e) {
+      toast.error(e.message || "Could not update contact");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleBlock = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (blockRow) await blocksApi.unblockUser(blockRow.block_row_id);
+      else await blocksApi.blockUser(user.id);
+      reloadBlocked();
+      reload();
+    } catch (e) {
+      toast.error(e.message || "Could not update block");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <ChatShell active="chats">

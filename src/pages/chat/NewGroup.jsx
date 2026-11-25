@@ -2,9 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Search, X, Check, Camera, UsersRound } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS } from "../../data/mockChatData";
+import toast from "react-hot-toast";
+import { usePeople } from "../../hooks/usePeople";
+import { createGroup } from "../../services/conversations";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
+import { ListSkeleton } from "../../components/chat/Skeleton";
 import ChatShell from "../../components/chat/ChatShell";
 
 const NewGroup = () => {
@@ -14,24 +17,57 @@ const NewGroup = () => {
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState([]);
   const [groupName, setGroupName] = useState("");
+  const [creating, setCreating] = useState(false);
 
+  const { people, loading } = usePeople(query);
+
+  // The server already filters by the search term; this keeps the list stable
+  // while a debounced request is still in flight.
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return ALL_USERS.filter(
+    if (!q) return people;
+    return people.filter(
       (u) =>
-        !q ||
         u.display_name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q)
+        u.username.toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [query, people]);
 
-  const toggle = (id) =>
+  // Picked members are looked up here so a selection survives a search that
+  // no longer returns that person.
+  const [pickedUsers, setPickedUsers] = useState([]);
+  const userById = useMemo(() => {
+    const map = new Map(pickedUsers.map((u) => [u.id, u]));
+    people.forEach((u) => map.set(u.id, u));
+    return map;
+  }, [people, pickedUsers]);
+
+  const toggle = (id) => {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+    const found = userById.get(id);
+    if (found) {
+      setPickedUsers((prev) =>
+        prev.some((u) => u.id === id)
+          ? prev.filter((u) => u.id !== id)
+          : [...prev, found],
+      );
+    }
+  };
 
-  const create = () => {
-    if (!groupName.trim() || picked.length === 0) return;
-    // UI-only: navigate to chat list (would call createGroup API in prod)
-    navigate("/chat");
+  const create = async () => {
+    if (!groupName.trim() || picked.length === 0 || creating) return;
+    setCreating(true);
+    try {
+      const conv = await createGroup({
+        group_name: groupName.trim(),
+        member_ids: picked,
+      });
+      navigate(conv?.id ? `/chat/${conv.id}` : "/chat");
+    } catch (e) {
+      toast.error(e.message || "Could not create group");
+    } finally {
+      setCreating(false);
+    }
   };
 
   if (step === 2) {
@@ -77,7 +113,7 @@ const NewGroup = () => {
           </p>
           <div className="flex flex-wrap gap-2">
             {picked.map((id) => {
-              const u = ALL_USERS.find((x) => x.id === id);
+              const u = userById.get(id);
               return (
                 <div
                   key={id}
@@ -111,7 +147,7 @@ const NewGroup = () => {
         subtitle={
           picked.length === 0
             ? "Add participants"
-            : `${picked.length} of ${ALL_USERS.length} selected`
+            : `${picked.length} of ${people.length} selected`
         }
       />
 
@@ -139,7 +175,7 @@ const NewGroup = () => {
       {picked.length > 0 && (
         <div className="px-4 pb-3 flex gap-2 overflow-x-auto scrollbar-none">
           {picked.map((id) => {
-            const u = ALL_USERS.find((x) => x.id === id);
+            const u = userById.get(id);
             return (
               <button
                 key={id}
@@ -161,6 +197,7 @@ const NewGroup = () => {
 
       {/* All users */}
       <div className="pb-24">
+        {loading && candidates.length === 0 && <ListSkeleton />}
         {candidates.map((u) => {
           const selected = picked.includes(u.id);
           return (

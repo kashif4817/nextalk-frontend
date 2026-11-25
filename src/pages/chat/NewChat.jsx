@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, UsersRound, UserPlus, Sparkles, X } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ALL_USERS, BLOCKED_USER_IDS } from "../../data/mockChatData";
+import { usePeople } from "../../hooks/usePeople";
+import { useContacts } from "../../hooks/useContacts";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { ListSkeleton } from "../../components/chat/Skeleton";
 
 const NewChat = () => {
   const { t } = useTheme();
@@ -13,7 +15,20 @@ const NewChat = () => {
   const [query, setQuery] = useState("");
 
   // Available users = not blocked, not me
-  const usersList = useMemo(() => ALL_USERS.filter((u) => !BLOCKED_USER_IDS.includes(u.id)), []);
+  const { people, loading, error, reload } = usePeople(query);
+  const { contacts: savedContacts } = useContacts();
+
+  // /users/all and /users/search already exclude blocked users in both
+  // directions; `is_contact` is the one thing they do not tell us.
+  const contactIds = useMemo(
+    () => new Set(savedContacts.map((c) => c.id)),
+    [savedContacts],
+  );
+
+  const usersList = useMemo(
+    () => people.map((u) => ({ ...u, is_contact: contactIds.has(u.id) })),
+    [people, contactIds],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -76,8 +91,19 @@ const NewChat = () => {
         />
       </div>
 
+      {loading && <ListSkeleton />}
+
+      {!loading && error && (
+        <div className="py-16 text-center">
+          <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>{error}</p>
+          <button onClick={reload} className="mt-3 text-sm font-medium text-amber-500 cursor-pointer">
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* Contacts on NexTalk */}
-      {contacts.length > 0 && (
+      {!loading && !error && contacts.length > 0 && (
         <Section title="Contacts on NexTalk">
           {contacts.map((u) => (
             <UserRow key={u.id} user={u} onClick={() => navigate(`/chat/profile/${u.id}`)} />
@@ -86,7 +112,7 @@ const NewChat = () => {
       )}
 
       {/* Discover users (everyone else) */}
-      {others.length > 0 && (
+      {!loading && !error && others.length > 0 && (
         <Section
           title="Discover people on NexTalk"
           subtitle="Anyone on NexTalk can be messaged."
@@ -98,7 +124,7 @@ const NewChat = () => {
         </Section>
       )}
 
-      {filtered.length === 0 && (
+      {!loading && !error && filtered.length === 0 && (
         <div className="px-6 py-16 text-center">
           <p className={`text-sm ${t("text-stone-500", "text-stone-400")}`}>
             No users match "{query}".

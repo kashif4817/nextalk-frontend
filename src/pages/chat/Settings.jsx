@@ -8,28 +8,70 @@ import {
   HelpCircle,
   LogOut,
   Sparkles,
-  Database,
   KeyRound,
   Languages,
   CircleUser,
   Palette,
   Image as ImageIcon,
+  Check,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { usePreferences } from "../../context/PreferencesContext";
+import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
+import { notificationPermission } from "../../lib/notify";
 import { useWallpaper } from "../../context/WallpaperContext";
-import { ME } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import {
+  getInitials,
+  gradientForId,
+  resolveDisplayName,
+} from "../../utils/profile";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { ProfileCardSkeleton } from "../../components/chat/Skeleton";
 import ConfirmModal from "../../components/chat/ConfirmModal";
+import SoonBadge from "../../components/chat/SoonBadge";
 import supabase from "../../utils/supabaseClient";
 import { comingSoon } from "../../utils/toast";
 
+const THEME_OPTIONS = [
+  { id: "light", label: "Light", icon: Sun },
+  { id: "dark", label: "Dark", icon: Moon },
+  { id: "system", label: "System", hint: "Match your device (default)", icon: Monitor },
+];
+
 const Settings = () => {
-  const { t, dark, toggle } = useTheme();
+  const { t, dark, mode, setMode } = useTheme();
   const { wallpaper } = useWallpaper();
+  const { user, profile, profileLoading } = useUser();
+  const { prefs } = usePreferences();
   const navigate = useNavigate();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+
+  const themeHint =
+    mode === "system"
+      ? `System (${dark ? "Dark" : "Light"})`
+      : THEME_OPTIONS.find((o) => o.id === mode)?.label;
+
+  const desktopOn = prefs.notifyDesktop && notificationPermission() === "granted";
+  const notificationsHint = desktopOn
+    ? prefs.notifySound
+      ? "Desktop alerts and sound"
+      : "Desktop alerts"
+    : prefs.notifySound
+      ? "Sound only"
+      : "Off";
+
+  const displayName = resolveDisplayName(profile, user);
+  // Nudge users who skipped setup, instead of showing an empty subtitle.
+  const subtitle =
+    profile?.about?.trim() ||
+    (profile?.username ? `@${profile.username}` : "Tap to finish your profile");
 
   const handleLogout = async () => {
     try {
@@ -47,44 +89,53 @@ const Settings = () => {
 
       {/* Profile card */}
       <button
-        onClick={() => comingSoon("Profile editing")}
+        onClick={() => navigate("/chat/settings/profile")}
         className={`w-full flex items-center gap-3 px-4 py-4 cursor-pointer ${t("bg-stone-900/40 hover:bg-white/5", "bg-white hover:bg-stone-50")}`}
       >
-        <Avatar initials={ME.initials} color={ME.color} size="lg" />
-        <div className="flex-1 text-left min-w-0">
-          <p className={`text-base font-semibold ${t("text-stone-100", "text-stone-900")}`}>
-            {ME.display_name}
-          </p>
-          <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
-            {ME.about}
-          </p>
-        </div>
+        {profileLoading ? (
+          <ProfileCardSkeleton />
+        ) : (
+          <>
+            <Avatar
+              initials={getInitials(displayName)}
+              color={gradientForId(user?.id)}
+              size="lg"
+            />
+            <div className="flex-1 text-left min-w-0">
+              <p className={`text-base font-semibold truncate ${t("text-stone-100", "text-stone-900")}`}>
+                {displayName}
+              </p>
+              <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
+                {subtitle}
+              </p>
+            </div>
+          </>
+        )}
         <ChevronRight className={`w-5 h-5 ${t("text-stone-600", "text-stone-300")}`} />
       </button>
 
       {/* Sections */}
       <Section>
-        <Row icon={KeyRound} label="Account" hint="Privacy, security, change number" onClick={() => navigate("/chat/settings/privacy")} />
+        <Row icon={KeyRound} label="Account" hint="Email, sign-in, security" onClick={() => navigate("/chat/settings/account")} />
         <Row icon={Lock} label="Privacy" hint="Last seen, photo, about, read receipts" onClick={() => navigate("/chat/settings/privacy")} />
         <Row icon={ImageIcon} label="Chat wallpaper" hint={wallpaper.name} onClick={() => navigate("/chat/settings/wallpaper")} />
-        <Row icon={MessageSquare} label="Chats" hint="Theme, history" onClick={() => comingSoon("Chat preferences")} />
-        <Row icon={Bell} label="Notifications" hint="Messages, groups, calls" onClick={() => comingSoon("Notification settings")} />
-        <Row icon={Database} label="Storage and data" hint="Network usage, auto-download" onClick={() => comingSoon("Storage settings")} />
+        <Row icon={MessageSquare} label="Chats" hint="Enter to send, text size" onClick={() => navigate("/chat/settings/chats")} />
+        <Row icon={Bell} label="Notifications" hint={notificationsHint} onClick={() => navigate("/chat/settings/notifications")} />
       </Section>
 
       <Section>
         <Row
           icon={Palette}
           label="Theme"
-          hint={dark ? "Dark" : "Light"}
-          onClick={toggle}
+          hint={themeHint}
+          onClick={() => setThemeOpen(true)}
         />
-        <Row icon={Languages} label="App language" hint="English" onClick={() => comingSoon("More languages")} />
+        <Row icon={Languages} label="App language" hint="English" soon onClick={() => comingSoon("More languages")} />
       </Section>
 
       <Section>
-        <Row icon={Sparkles} label="What's new" onClick={() => comingSoon("Changelog")} />
-        <Row icon={HelpCircle} label="Help" hint="Help center, contact us" onClick={() => comingSoon("Help center")} />
+        <Row icon={Sparkles} label="What's new" soon onClick={() => comingSoon("Changelog")} />
+        <Row icon={HelpCircle} label="Help" hint="Help center, contact us" soon onClick={() => comingSoon("Help center")} />
       </Section>
 
       <Section>
@@ -98,6 +149,21 @@ const Settings = () => {
           Kashif Mehmood
         </span>
       </p>
+
+      <BottomSheet open={themeOpen} onClose={() => setThemeOpen(false)} title="Theme">
+        {THEME_OPTIONS.map((o) => (
+          <SheetItem
+            key={o.id}
+            icon={mode === o.id ? Check : o.icon}
+            label={o.label}
+            hint={o.hint}
+            onClick={() => {
+              setMode(o.id);
+              setThemeOpen(false);
+            }}
+          />
+        ))}
+      </BottomSheet>
 
       <ConfirmModal
         open={logoutOpen}
@@ -123,7 +189,8 @@ const Section = ({ children }) => {
   );
 };
 
-const Row = ({ icon: Icon, label, hint, danger, onClick }) => {
+// `soon` marks a feature that isn't built yet: tagged, and its text muted.
+const Row = ({ icon: Icon, label, hint, danger, soon, onClick }) => {
   const { t } = useTheme();
   return (
     <button
@@ -134,8 +201,11 @@ const Row = ({ icon: Icon, label, hint, danger, onClick }) => {
       )}`}
     >
       <Icon className={`w-5 h-5 ${danger ? "text-red-500" : t("text-stone-400", "text-stone-500")}`} />
-      <div className="flex-1 min-w-0 text-left">
-        <p className={`text-sm ${danger ? "text-red-500" : t("text-stone-100", "text-stone-900")}`}>{label}</p>
+      <div className={`flex-1 min-w-0 text-left ${soon ? "opacity-70" : ""}`}>
+        <p className={`flex items-center gap-2 text-sm ${danger ? "text-red-500" : t("text-stone-100", "text-stone-900")}`}>
+          {label}
+          {soon && <SoonBadge />}
+        </p>
         {hint && (
           <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>{hint}</p>
         )}

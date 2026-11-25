@@ -4,7 +4,7 @@ const sections = [
   {
     title: "1. Information We Collect",
     content: [
-      "**Account Information:** When you create an account, we collect your name, email address, and password (stored as a secure hash). If you sign up via Google or GitHub, we receive your name, email, and profile picture from those services.",
+      "**Account Information:** NexTalk uses Google and GitHub sign-in only — we never receive, handle, or store a password. When you sign in, we receive your name, email address, and profile picture from the provider you chose.",
       "**Messages & Content:** All messages are end-to-end encrypted. We cannot read, access, or store the plaintext content of your messages. We store encrypted message data only to deliver messages to your devices.",
       "**Usage Data:** We collect anonymized usage statistics such as feature usage frequency, app performance metrics, and crash reports to improve our service. This data cannot be linked back to you or your messages.",
       "**Device Information:** We collect basic device information (OS version, app version, device type) for compatibility and troubleshooting purposes.",

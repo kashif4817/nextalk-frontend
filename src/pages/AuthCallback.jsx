@@ -2,15 +2,43 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import supabase from '../utils/supabaseClient'
 import NexTalkLogo from '../components/NexTalkLogo'
+import { takeRedirect } from '../routes/redirectStore'
+
+/** Reads an OAuth failure out of the callback URL (query or hash). */
+const readOAuthError = () => {
+  const fromQuery = new URLSearchParams(window.location.search)
+  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const desc =
+    fromQuery.get('error_description') || fromHash.get('error_description')
+  const code = fromQuery.get('error') || fromHash.get('error')
+  if (!desc && !code) return null
+  return desc || code
+}
 
 const AuthCallback = () => {
   const navigate = useNavigate()
 
   useEffect(() => {
     const resolveDestination = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (!data.session) {
-        navigate('/login')
+      // The provider can bounce back with an explicit failure (declined
+      // consent, revoked app). Surface it instead of silently looping.
+      const oauthError = readOAuthError()
+      if (oauthError) {
+        navigate('/login', { replace: true, state: { authError: oauthError } })
+        return
+      }
+
+      const { data, error } = await supabase.auth.getSession()
+
+      if (error || !data.session) {
+        navigate('/login', {
+          replace: true,
+          state: {
+            authError:
+              error?.message ||
+              "We couldn't complete that sign-in. Please try again.",
+          },
+        })
         return
       }
 
@@ -21,7 +49,12 @@ const AuthCallback = () => {
         .eq('id', data.session.user.id)
         .maybeSingle()
 
-      navigate(profile ? '/chat' : '/complete-profile')
+      // Where the guard bounced them from, if anywhere.
+      const intended = takeRedirect()
+
+      navigate(profile ? intended || '/chat' : '/complete-profile', {
+        replace: true,
+      })
     }
 
     resolveDestination()

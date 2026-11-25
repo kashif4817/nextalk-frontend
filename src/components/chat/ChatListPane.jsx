@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Search,
@@ -18,14 +18,29 @@ import {
   MessageSquarePlus,
   ShieldOff,
   CircleUser,
+  Mic,
+  Camera,
+  Video,
+  FileText,
+  Ghost,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
-import { CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { ListSkeleton } from "./Skeleton";
+import { useConversations } from "../../hooks/useConversations";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUser } from "../../context/UserContext";
+import { chatKeys, prefetchMessages } from "../../lib/chatCache";
+import * as convApi from "../../services/conversations";
 import Avatar from "./Avatar";
 import BottomSheet, { SheetItem } from "./BottomSheet";
 import DropdownMenu, { MenuItem } from "./DropdownMenu";
+import { TempChatConfirm } from "./TempChatLauncher";
 import { useLongPress } from "./useLongPress";
 import NexTalkLogo from "../NexTalkLogo";
+
+// Leading icon on a chat row's preview, as WhatsApp does for non-text messages.
+const TYPE_ICONS = { audio: Mic, image: Camera, video: Video, document: FileText };
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -34,14 +49,15 @@ const FILTERS = [
   { id: "pinned", label: "Pinned" },
 ];
 
-const ChatRow = ({ conv, onLongPress, onClick, active }) => {
+// How many chats at the top of the list get their messages loaded ahead of
+// time, so opening them is instant even on a first visit.
+const WARM_TOP = 5;
+
+const ChatRow = ({ conv, onLongPress, onClick, onWarm, active }) => {
   const { t } = useTheme();
   const lp = useLongPress(() => onLongPress(conv));
 
-  const other = !conv.is_group ? getUser(conv.other_user_id) : null;
-  const initials = conv.is_group ? conv.initials : other?.initials;
-  const color = conv.is_group ? conv.color : other?.color;
-  const status = !conv.is_group ? other?.status : null;
+  const { initials, color, status } = conv;
 
   return (
     <button
@@ -50,6 +66,10 @@ const ChatRow = ({ conv, onLongPress, onClick, active }) => {
         if (lp.didTriggerLongPress()) return;
         onClick(conv);
       }}
+      // Start loading the chat as soon as it's likely to be opened.
+      onMouseEnter={() => onWarm(conv)}
+      onFocus={() => onWarm(conv)}
+      onTouchStart={() => onWarm(conv)}
       className={`w-full flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors text-left ${
         active
           ? t("bg-amber-500/10", "bg-amber-50")
@@ -81,6 +101,18 @@ const ChatRow = ({ conv, onLongPress, onClick, active }) => {
                 : t("text-stone-400", "text-stone-500")
             }`}
           >
+            {TYPE_ICONS[conv.last_message?.type] &&
+              (() => {
+                const Icon = TYPE_ICONS[conv.last_message.type];
+                return (
+                  <Icon
+                    className={`inline-block w-3.5 h-3.5 mr-1 -mt-0.5 ${
+                      conv.last_message.type === "audio" ? "text-amber-500" : ""
+                    }`}
+                    aria-hidden="true"
+                  />
+                );
+              })()}
             {conv.last_message?.text}
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -108,10 +140,38 @@ const ChatListPane = () => {
   const navigate = useNavigate();
   const { id: activeChatId } = useParams();
 
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const { conversations, loading, error, reload, patch, remove } = useConversations();
+  const qc = useQueryClient();
+  const meId = useUser().user?.id;
+
+  const warm = useCallback(
+    (conv) => meId && prefetchMessages(qc, meId, conv.id),
+    [qc, meId],
+  );
+
+  // Like WhatsApp keeping recent chats synced on the device: once the browser
+  // is idle, load the newest page of the top chats that aren't cached yet.
+  const topIds = conversations
+    .filter((c) => !c.is_archived)
+    .slice(0, WARM_TOP)
+    .map((c) => c.id)
+    .join(",");
+  useEffect(() => {
+    if (!meId || !topIds) return;
+    const cold = topIds.split(",").filter((id) => !qc.getQueryData(chatKeys.messages(meId, id)));
+    if (!cold.length) return;
+    const run = () => cold.forEach((id) => prefetchMessages(qc, meId, id));
+    if (window.requestIdleCallback) {
+      const handle = window.requestIdleCallback(run, { timeout: 3000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const handle = setTimeout(run, 1500);
+    return () => clearTimeout(handle);
+  }, [qc, meId, topIds]);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tempOpen, setTempOpen] = useState(false);
   const [actionConv, setActionConv] = useState(null);
 
   const visible = useMemo(() => {
@@ -136,20 +196,43 @@ const ChatListPane = () => {
 
   const archivedCount = conversations.filter((c) => c.is_archived).length;
 
-  const updateConv = (id, patch) =>
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  // Each action updates the row immediately, then calls the API. On failure we
+  // reload rather than guessing how to undo.
+  const ACTIONS = {
+    pin:     { optimistic: { is_pinned: true },   call: convApi.pinConversation,       fail: "Could not pin chat" },
+    unpin:   { optimistic: { is_pinned: false },  call: convApi.unpinConversation,     fail: "Could not unpin chat" },
+    mute:    { optimistic: { is_muted: true },    call: convApi.muteConversation,      fail: "Could not mute chat" },
+    unmute:  { optimistic: { is_muted: false },   call: convApi.unmuteConversation,    fail: "Could not unmute chat" },
+    archive: { optimistic: { is_archived: true }, call: convApi.archiveConversation,   fail: "Could not archive chat" },
+    read:    { optimistic: { unread_count: 0 },   call: convApi.markRead,              fail: "Could not mark as read" },
+  };
 
-  const handleAction = (action) => {
+  const handleAction = async (action) => {
     if (!actionConv) return;
     const id = actionConv.id;
-    if (action === "pin") updateConv(id, { is_pinned: true, pinned_at: new Date().toISOString() });
-    if (action === "unpin") updateConv(id, { is_pinned: false });
-    if (action === "mute") updateConv(id, { is_muted: true });
-    if (action === "unmute") updateConv(id, { is_muted: false });
-    if (action === "archive") updateConv(id, { is_archived: true });
-    if (action === "read") updateConv(id, { unread_count: 0 });
-    if (action === "delete") setConversations((p) => p.filter((c) => c.id !== id));
     setActionConv(null);
+
+    if (action === "delete") {
+      remove(id);
+      try {
+        await convApi.deleteConversation(id);
+      } catch (e) {
+        toast.error(e.message || "Could not delete chat");
+        reload();
+      }
+      return;
+    }
+
+    const spec = ACTIONS[action];
+    if (!spec) return;
+
+    patch(id, spec.optimistic);
+    try {
+      await spec.call(id);
+    } catch (e) {
+      toast.error(e.message || spec.fail);
+      reload();
+    }
   };
 
   const empty = conversations.length === 0;
@@ -188,13 +271,15 @@ const ChatListPane = () => {
 
             <DropdownMenu open={menuOpen} onClose={() => setMenuOpen(false)}>
               <MenuItem icon={UsersRound} label="New group" onClick={() => { setMenuOpen(false); navigate("/chat/new-group"); }} />
+              <MenuItem icon={Ghost} label="New temp chat" hint="Anonymous" onClick={() => { setMenuOpen(false); setTempOpen(true); }} />
               <MenuItem icon={CircleUser} label="Contacts" onClick={() => { setMenuOpen(false); navigate("/chat/contacts"); }} />
               <MenuItem icon={Star} label="Starred messages" onClick={() => { setMenuOpen(false); navigate("/chat/starred"); }} />
               <MenuItem icon={Archive} label="Archived" onClick={() => { setMenuOpen(false); navigate("/chat/archived"); }} hint={archivedCount > 0 ? String(archivedCount) : null} />
               <MenuItem icon={ShieldOff} label="Blocked users" onClick={() => { setMenuOpen(false); navigate("/chat/blocked"); }} />
-              <MenuItem icon={Bell} label="Notifications" onClick={() => { setMenuOpen(false); navigate("/chat/settings"); }} />
+              <MenuItem icon={Bell} label="Notifications" onClick={() => { setMenuOpen(false); navigate("/chat/settings/notifications"); }} />
               <MenuItem icon={Settings} label="Settings" onClick={() => { setMenuOpen(false); navigate("/chat/settings"); }} />
             </DropdownMenu>
+            <TempChatConfirm open={tempOpen} onClose={() => setTempOpen(false)} />
           </div>
         </div>
 
@@ -273,7 +358,19 @@ const ChatListPane = () => {
 
       {/* ── List / Empty state ── */}
       <main className="flex-1 overflow-y-auto scrollbar-hide pb-20 md:pb-0">
-        {empty ? (
+        {loading ? (
+          <ListSkeleton trailing label="Loading chats" />
+        ) : error ? (
+          <div className="px-6 py-16 text-center">
+            <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>{error}</p>
+            <button
+              onClick={reload}
+              className="mt-4 text-sm font-medium text-amber-500 hover:text-amber-600 cursor-pointer"
+            >
+              Try again
+            </button>
+          </div>
+        ) : empty ? (
           <EmptyState onStart={() => navigate("/chat/explore")} />
         ) : visible.length === 0 ? (
           <div className="px-6 py-16 text-center">
@@ -289,6 +386,7 @@ const ChatListPane = () => {
                 conv={conv}
                 active={activeChatId === conv.id}
                 onClick={(c) => navigate(`/chat/${c.id}`)}
+                onWarm={warm}
                 onLongPress={(c) => setActionConv(c)}
               />
             ))}

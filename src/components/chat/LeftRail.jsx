@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MessageSquare,
@@ -7,13 +8,17 @@ import {
   Settings,
   Sun,
   Moon,
+  Ghost,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { ME } from "../../data/mockChatData";
+import { useUser } from "../../context/UserContext";
+import { initialsOf } from "../../lib/avatar";
+import { TempChatConfirm } from "./TempChatLauncher";
 
 // Thin desktop-only left rail (WhatsApp web style).
 // Active state uses a subtle tint instead of full-button highlight.
-const RailButton = ({ icon: Icon, label, active, onClick, badge }) => {
+// `accent` keeps a button amber at rest, for an action that should stand out.
+const RailButton = ({ icon: Icon, label, active, onClick, badge, accent = false }) => {
   const { t } = useTheme();
   return (
     <button
@@ -22,10 +27,15 @@ const RailButton = ({ icon: Icon, label, active, onClick, badge }) => {
       className={`relative w-12 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors group ${
         active
           ? t("bg-amber-500/15 text-amber-400", "bg-amber-50 text-amber-600")
-          : t(
-              "text-stone-400 hover:bg-white/5 hover:text-stone-100",
-              "text-stone-500 hover:bg-stone-100 hover:text-stone-900"
-            )
+          : accent
+            ? t(
+                "text-amber-400 hover:bg-amber-500/15",
+                "text-amber-600 hover:bg-amber-50"
+              )
+            : t(
+                "text-stone-400 hover:bg-white/5 hover:text-stone-100",
+                "text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+              )
       }`}
     >
       <Icon className="w-[18px] h-[18px]" />
@@ -48,8 +58,13 @@ const RailButton = ({ icon: Icon, label, active, onClick, badge }) => {
 };
 
 const LeftRail = ({ active = "chats" }) => {
+  const { user, profile } = useUser();
+  const myInitials = initialsOf(
+    profile?.display_name || profile?.username || user?.email || "?",
+  );
   const { t, dark, toggle } = useTheme();
   const navigate = useNavigate();
+  const [tempOpen, setTempOpen] = useState(false);
 
   return (
     <aside
@@ -84,6 +99,18 @@ const LeftRail = ({ active = "chats" }) => {
           active={active === "archived"}
           onClick={() => navigate("/chat/archived")}
         />
+
+        <span
+          aria-hidden="true"
+          className={`my-1.5 w-7 h-px ${t("bg-white/10", "bg-stone-200")}`}
+        />
+        <RailButton
+          icon={Ghost}
+          label="Temp chat"
+          accent
+          onClick={() => setTempOpen(true)}
+        />
+        <TempChatConfirm open={tempOpen} onClose={() => setTempOpen(false)} />
       </div>
 
       {/* Bottom: Theme + Settings + Profile */}
@@ -104,7 +131,7 @@ const LeftRail = ({ active = "chats" }) => {
           className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold cursor-pointer hover:ring-2 hover:ring-amber-500/50 transition-all"
           title="Profile"
         >
-          {ME.initials}
+          {myInitials}
         </button>
       </div>
     </aside>

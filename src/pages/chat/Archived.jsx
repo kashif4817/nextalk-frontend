@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router-dom";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, Mic } from "lucide-react";
+import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
-import { CONVERSATIONS, getUser } from "../../data/mockChatData";
+import { useConversations } from "../../hooks/useConversations";
+import { unarchiveConversation } from "../../services/conversations";
 import Avatar from "../../components/chat/Avatar";
 import ChatTopBar from "../../components/chat/ChatTopBar";
 import ChatShell from "../../components/chat/ChatShell";
+import { ListSkeleton } from "../../components/chat/Skeleton";
 import BottomSheet, { SheetItem } from "../../components/chat/BottomSheet";
 import { useLongPress } from "../../components/chat/useLongPress";
 
 const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
   const { t } = useTheme();
   const lp = useLongPress(() => onLongPress(conv));
-  const other = !conv.is_group ? getUser(conv.other_user_id) : null;
 
   return (
     <button
@@ -28,8 +30,8 @@ const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
       }`}
     >
       <Avatar
-        initials={conv.is_group ? conv.initials : other?.initials}
-        color={conv.is_group ? conv.color : other?.color}
+        initials={conv.initials}
+        color={conv.color}
         size="md"
       />
       <div className="flex-1 min-w-0 text-left">
@@ -37,6 +39,9 @@ const ArchivedRow = ({ conv, onClick, onLongPress, active }) => {
           {conv.title}
         </p>
         <p className={`text-xs truncate ${t("text-stone-400", "text-stone-500")}`}>
+          {conv.last_message?.type === "audio" && (
+            <Mic className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 text-amber-500" aria-hidden="true" />
+          )}
           {conv.last_message?.text}
         </p>
       </div>
@@ -53,13 +58,20 @@ const Archived = () => {
   const childMatch = useMatch("/chat/archived/:id");
   const activeId = childMatch?.params?.id;
 
-  const [conversations, setConversations] = useState(CONVERSATIONS);
+  const { conversations, loading, error, reload, patch } = useConversations();
   const [actionConv, setActionConv] = useState(null);
 
   const archived = conversations.filter((c) => c.is_archived);
 
-  const restore = (id) =>
-    setConversations((p) => p.map((c) => (c.id === id ? { ...c, is_archived: false } : c)));
+  const restore = async (id) => {
+    patch(id, { is_archived: false });
+    try {
+      await unarchiveConversation(id);
+    } catch (e) {
+      toast.error(e.message || "Could not unarchive chat");
+      reload();
+    }
+  };
 
   return (
     <ChatShell
@@ -71,7 +83,16 @@ const Archived = () => {
       <div className={`min-h-screen ${t("bg-stone-950 text-stone-100", "bg-stone-50 text-stone-900")}`}>
         <ChatTopBar title="Archived" subtitle={`${archived.length} chats`} />
 
-        {archived.length === 0 ? (
+        {loading ? (
+          <ListSkeleton count={4} trailing />
+        ) : error ? (
+          <div className="px-6 py-16 text-center">
+            <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>{error}</p>
+            <button onClick={reload} className="mt-3 text-sm font-medium text-amber-500 cursor-pointer">
+              Try again
+            </button>
+          </div>
+        ) : archived.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <Archive className={`w-10 h-10 mx-auto mb-3 ${t("text-stone-500", "text-stone-400")}`} />
             <p className={`text-sm ${t("text-stone-400", "text-stone-500")}`}>
