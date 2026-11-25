@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -65,9 +65,8 @@ import { useLongPress } from "../../components/chat/useLongPress";
 import { comingSoon } from "../../utils/toast";
 import { useWallpaper } from "../../context/WallpaperContext";
 import { usePreferences } from "../../context/PreferencesContext";
+import { loadEmojiPanel, useEmojiPanel } from "../../lib/emojiPanelLoader";
 
-// The emoji dataset is large; it loads the first time the panel opens.
-const EmojiPanel = lazy(() => import("../../components/chat/EmojiPanel"));
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -228,6 +227,8 @@ const ChatThread = () => {
   // Emoji panel. The caret is remembered so emoji land where you were typing
   // even after focus moved into the panel's search box.
   const [emojiOpen, setEmojiOpen] = useState(false);
+  // The card's code, preloaded at idle so the first tap opens it instantly.
+  const EmojiPanel = useEmojiPanel(emojiOpen);
   const caretRef = useRef(null);
   // The composer bar; the emoji card floats inside it, so a press anywhere
   // else (messages, header, chat list) closes the card.
@@ -1229,6 +1230,8 @@ const ChatThread = () => {
           <>
             <button
               onClick={toggleEmoji}
+              // Hovering is a strong hint you're about to open it.
+              onPointerEnter={() => loadEmojiPanel().catch(() => {})}
               aria-label="Emoji"
               aria-haspopup="dialog"
               aria-expanded={emojiOpen}
@@ -1252,9 +1255,11 @@ const ChatThread = () => {
                   "bg-white border-stone-200",
                 )}`}
               >
-                <Suspense fallback={<EmojiGridSkeleton height={EMOJI_PANEL_HEIGHT} />}>
+                {EmojiPanel ? (
                   <EmojiPanel onPick={insertEmoji} height={EMOJI_PANEL_HEIGHT} />
-                </Suspense>
+                ) : (
+                  <EmojiGridSkeleton height={EMOJI_PANEL_HEIGHT} />
+                )}
               </div>
             )}
             <div className="relative">

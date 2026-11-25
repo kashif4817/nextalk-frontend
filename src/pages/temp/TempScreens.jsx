@@ -122,7 +122,7 @@ const Eyebrow = ({ children }) => {
 const FEATURES = [
   { icon: UserX, title: "No sign-up", text: "Nobody needs an account. You both show up as Anonymous." },
   { icon: ServerOff, title: "Nothing saved", text: "Not on our server and not in your browser. Messages only pass through." },
-  { icon: Flame, title: "Self-destructs", text: "Close the tab, go back or press End chat, and it's gone for both of you." },
+  { icon: Flame, title: "Self-destructs", text: "Ends when either of you ends it, or 10 minutes after someone leaves. Then it's gone for good." },
   { icon: EyeOff, title: "Screen shield", text: "The chat blurs whenever the window isn't in front of you." },
 ];
 
@@ -266,7 +266,7 @@ export const PeerSeats = ({ state = "waiting", compact = false }) => {
             ?
           </div>
         </div>
-        <span className={label}>{state === "away" ? "Reconnecting…" : "Waiting…"}</span>
+        <span className={label}>{state === "away" ? "Left the chat" : "Waiting…"}</span>
       </div>
     </div>
   );
@@ -344,8 +344,84 @@ export const WaitingPanel = ({ shareUrl }) => {
 
       <p className={`mt-5 flex items-center gap-2 text-xs ${muted}`}>
         <Timer className="w-3.5 h-3.5 shrink-0" />
-        Keep this tab open. Leaving it ends the chat.
+        Closed this tab by mistake? Open the link again within 10 minutes.
       </p>
+    </div>
+  );
+};
+
+// ── The other person left; their seat is held ─────────────────────────────
+/**
+ * `clock` is the live "9:42" until the chat ends. `banner` is the slim version
+ * pinned over a conversation; otherwise it's the large centred one for an
+ * empty chat.
+ */
+export const AwayNotice = ({ clock, shareUrl, banner = false }) => {
+  const { t, muted } = useStyles();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+    } catch {
+      // Clipboard blocked; the link is in the address bar.
+    }
+  };
+
+  const copyButton = (
+    <button
+      onClick={copy}
+      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${t(
+        "bg-white/10 hover:bg-white/15 text-stone-100",
+        "bg-white hover:bg-stone-50 text-stone-700 border border-stone-200"
+      )}`}
+    >
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? "Copied" : "Copy link"}
+    </button>
+  );
+
+  if (banner) {
+    return (
+      <div
+        role="status"
+        className={`flex items-center gap-3 pl-4 pr-2 py-2 rounded-2xl border shadow-lg backdrop-blur ${t(
+          "bg-stone-900/90 border-amber-500/30",
+          "bg-amber-50/95 border-amber-200"
+        )}`}
+      >
+        <Timer className="w-4.5 h-4.5 shrink-0 text-amber-500" />
+        <p className="text-sm leading-snug">
+          <span className="font-semibold">They left the chat.</span>{" "}
+          <span className={muted}>It ends in </span>
+          <span className="font-bold tabular-nums text-amber-500">{clock}</span>
+          <span className={muted}> unless they come back.</span>
+        </p>
+        {copyButton}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center text-center" role="status">
+      <PeerSeats state="away" />
+      <p className="mt-6 text-xl font-semibold">They left the chat</p>
+      <p className={`mt-1.5 max-w-sm text-sm leading-relaxed ${muted}`}>
+        They can come back by opening the same link. If they don't return in time, the chat
+        ends and every message is deleted.
+      </p>
+      <p className={`mt-5 text-xs font-semibold uppercase tracking-[0.14em] ${muted}`}>
+        Chat ends in
+      </p>
+      <p className="mt-1 text-4xl font-bold tabular-nums text-amber-500">{clock}</p>
+      <div className="mt-5">{copyButton}</div>
     </div>
   );
 };
@@ -395,9 +471,10 @@ export const TempJoining = () => {
 const END_COPY = {
   you_left: { title: "You ended the chat", body: "Every message is gone, on both sides." },
   cancelled: { title: "Chat cancelled", body: "That link no longer works. Start a new one whenever you're ready." },
-  left: { title: "Chat ended", body: "The other person left, so the chat and all its messages are gone." },
+  left: { title: "Chat ended", body: "The other person ended the chat, so it and all its messages are gone." },
+  timed_out: { title: "Chat ended", body: "The other person didn't come back within 10 minutes, so the chat and its messages were deleted." },
   expired: { title: "Chat expired", body: "It was quiet for 30 minutes, so it closed and the messages were deleted." },
-  not_found: { title: "This chat has ended", body: "The link is no longer active. Temp chats close as soon as someone leaves." },
+  not_found: { title: "This chat has ended", body: "The link is no longer active. A temp chat ends when someone presses End chat, or 10 minutes after someone leaves and doesn't come back." },
   full: { title: "This chat is full", body: "Temp chats are for two people, and two are already in this one." },
   rate_limited: { title: "Too many chats", body: "You've started a lot of temp chats. Wait a few minutes and try again." },
   connection: { title: "Couldn't connect", body: "Check your connection and try again." },

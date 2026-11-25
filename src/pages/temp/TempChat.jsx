@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Check, CheckCheck, Clock, Ghost, Send, ShieldOff, Smile, Timer, X } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { usePreferences } from "../../context/PreferencesContext";
-import { RECONNECT_GRACE_SECONDS, TEMP_MAX_CHARS, useTempChat } from "../../hooks/useTempChat";
+import { LEAVE_GRACE_SECONDS, TEMP_MAX_CHARS, useTempChat } from "../../hooks/useTempChat";
 import ConfirmModal from "../../components/chat/ConfirmModal";
 import { EmojiGridSkeleton } from "../../components/chat/Skeleton";
 import { isTouchFirst } from "../../lib/attachments";
@@ -13,6 +13,7 @@ const EmojiPanel = lazy(() => import("../../components/chat/EmojiPanel"));
 const EMOJI_PANEL_HEIGHT =
   typeof window === "undefined" ? 420 : Math.min(420, Math.round(window.innerHeight * 0.5));
 import {
+  AwayNotice,
   PeerSeats,
   TempEnded,
   TempJoining,
@@ -68,17 +69,21 @@ const usePrivacyShield = () => {
 
 const blockCopy = (e) => e.preventDefault();
 
-/** Whole seconds left of a `seconds`-long window that started at `since` (ms). */
-const useSecondsLeft = (since, seconds) => {
+/** Whole seconds until `until` (ms), ticking live; null when there's no deadline. */
+const useSecondsLeft = (until) => {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!since) return;
+    if (!until) return;
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [since]);
-  if (!since) return null;
-  return Math.min(seconds, Math.max(0, Math.ceil((since + seconds * 1000 - now) / 1000)));
+  }, [until]);
+  if (!until) return null;
+  return Math.min(LEAVE_GRACE_SECONDS, Math.max(0, Math.ceil((until - now) / 1000)));
 };
+
+/** 599 → "9:59" */
+const clock = (seconds) =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 const TempChat = ({ mode }) => {
   const { t } = useTheme();
@@ -88,7 +93,8 @@ const TempChat = ({ mode }) => {
 
   const chat = useTempChat({ mode, roomId: linkRoomId });
   const hidden = usePrivacyShield();
-  const secondsLeft = useSecondsLeft(chat.awaySince, RECONNECT_GRACE_SECONDS);
+  const secondsLeft = useSecondsLeft(chat.awayUntil);
+  const awayClock = clock(secondsLeft ?? LEAVE_GRACE_SECONDS);
 
   // "online" for them only while this chat is in front of us, and their
   // messages only turn amber ✓✓ (seen) once they've actually been on screen.
@@ -280,7 +286,7 @@ const TempChat = ({ mode }) => {
     : waiting
       ? "waiting for someone to join…"
       : chat.status === "away"
-      ? "Connection lost, waiting for them…"
+      ? `left the chat · ends in ${awayClock}`
       : chat.peerTyping
         ? "typing…"
         : chat.peerFocused
@@ -325,7 +331,7 @@ const TempChat = ({ mode }) => {
         )}`}
       >
         <Timer className="w-3.5 h-3.5" />
-        Temporary chat. Nothing is saved, and it disappears when either of you leaves.
+        Temporary chat. Nothing is saved. It ends when either of you ends it, or 10 minutes after someone leaves.
       </div>
 
       {/* Messages (hidden whenever the page isn't in front of the user) */}
@@ -349,9 +355,13 @@ const TempChat = ({ mode }) => {
           {chat.messages.length === 0 && chat.status === "active" && (
             <div className="h-full flex flex-col items-center justify-center text-center pb-10">
               <PeerSeats state="connected" />
-              <p className="mt-6 text-xl font-semibold">You're both here</p>
-              <p className={`mt-1.5 text-sm ${muted}`}>
-                Say hi! Messages vanish the moment the chat ends.
+              <p className="mt-6 text-xl font-semibold">
+                {chat.rejoined ? "You're back in the chat" : "You're both here"}
+              </p>
+              <p className={`mt-1.5 max-w-sm text-sm ${muted}`}>
+                {chat.rejoined
+                  ? "Messages from before you left stayed in the tab you closed. Carry on!"
+                  : "Say hi! Messages vanish the moment the chat ends."}
               </p>
             </div>
           )}
@@ -401,27 +411,25 @@ const TempChat = ({ mode }) => {
           </div>
         )}
 
-        {/* The other person isn't here (dropped connection): same waiting
-            visual as before they joined, with the time they have left. */}
+        {/* The other person left (closed the tab, refreshed, lost connection).
+            Their seat is held: a live countdown, and the link to send again. */}
         {chat.status === "away" && !shielded && (
-          <div
-            className={`absolute inset-0 flex items-center justify-center px-6 backdrop-blur-sm ${t(
-              "bg-stone-950/75",
-              "bg-stone-50/80"
-            )}`}
-          >
-            <div className="flex flex-col items-center text-center" role="status">
-              <PeerSeats state="away" />
-              <p className="mt-6 text-xl font-semibold">Waiting for them to come back</p>
-              <p className={`mt-1.5 max-w-sm text-sm leading-relaxed ${muted}`}>
-                Their connection dropped. If they're not back in{" "}
-                <span className="font-semibold text-amber-500 tabular-nums">
-                  {secondsLeft ?? RECONNECT_GRACE_SECONDS}s
-                </span>
-                , the chat ends and everything is deleted.
-              </p>
+          chat.messages.length === 0 ? (
+            <div
+              className={`absolute inset-0 flex items-center justify-center px-6 ${t(
+                "bg-stone-950",
+                "bg-stone-50"
+              )}`}
+            >
+              <AwayNotice clock={awayClock} shareUrl={shareUrl} />
             </div>
-          </div>
+          ) : (
+            <div className="absolute top-3 inset-x-3 flex justify-center pointer-events-none">
+              <div className="pointer-events-auto max-w-full">
+                <AwayNotice clock={awayClock} shareUrl={shareUrl} banner />
+              </div>
+            </div>
+          )
         )}
       </div>
 
@@ -484,7 +492,7 @@ const TempChat = ({ mode }) => {
                 ? "Type a message"
                 : waiting
                   ? "You can type once someone joins"
-                  : "Waiting for them to reconnect…"
+                  : "They left. You can type again when they're back"
             }
             aria-label="Message"
             className={`block w-full bg-transparent outline-none text-sm leading-5 resize-none overflow-y-auto disabled:opacity-60 ${t(

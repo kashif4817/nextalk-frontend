@@ -12,86 +12,43 @@ import {
   Volleyball,
   X,
 } from "lucide-react";
-import data from "emoji-picker-react/data/emojis-en";
 import { useTheme } from "../../context/ThemeContext";
 import { isTouchFirst } from "../../lib/attachments";
-import { EMOJI_FONT, probeEmojiSupport } from "../../lib/emojiSupport";
+import { EMOJI_FONT } from "../../lib/emojiSupport";
+import { getEmojiCatalog, warmEmojiGlyphs } from "../../lib/emojiCatalog";
 import "./emojiPanel.css";
 
 // A plain, fast emoji grid in WhatsApp Web's layout. Only the emoji list
-// comes from emoji-picker-react; its picker checked every glyph on a canvas as
-// it scrolled into view, which stalled each tab switch for ~0.4s. Here the
-// device is probed once (lib/emojiSupport.js) and off-screen sections are
-// skipped by the browser until they're near (content-visibility).
+// comes from emoji-picker-react; its picker canvas-checked every glyph as it
+// scrolled into view, which stalled each tab switch. The list is filtered
+// once per device (lib/emojiSupport.js), glyphs are pre-laid-out at idle
+// (lib/emojiCatalog.js -> warmEmojiGlyphs), and rows far from view are
+// skipped by the browser (content-visibility, in 4-row blocks).
 
 const CELL = 44; // px, one grid cell (see emojiPanel.css)
+const BLOCK_ROWS = 4;
 const RECENTS_KEY = "nextalk:emoji-recent";
 const MAX_RECENTS = 24;
 const HOLD_MS = 450;
 
-const SECTIONS = [
-  { id: "smileys_people", label: "Smileys & People", icon: Smile },
-  { id: "animals_nature", label: "Animals & Nature", icon: Cat },
-  { id: "food_drink", label: "Food & Drink", icon: Coffee },
-  { id: "activities", label: "Activity", icon: Volleyball },
-  { id: "travel_places", label: "Travel & Places", icon: Car },
-  { id: "objects", label: "Objects", icon: Lightbulb },
-  { id: "symbols", label: "Symbols", icon: Shapes },
-  { id: "flags", label: "Flags", icon: Flag },
-];
-const RECENT = { id: "recent", label: "Recent", icon: Clock };
+const ICONS = {
+  recent: Clock,
+  smileys_people: Smile,
+  animals_nature: Cat,
+  food_drink: Coffee,
+  activities: Volleyball,
+  travel_places: Car,
+  objects: Lightbulb,
+  symbols: Shapes,
+  flags: Flag,
+};
 
-// ── The catalogue (built once per page) ─────────────────────────────────────
-
-const toChar = (unified) =>
-  unified
-    .split("-")
-    .map((hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .join("");
-
-const isCountryFlag = (u) => /^1f1(e[6-9a-f]|f[0-9a-f])-/.test(u);
-const isSubdivisionFlag = (u) => u.startsWith("1f3f4-e00");
-
-// Emoji 1.0–5.0 (2015–2017) are on every current device; newer ones vary.
-const PROBED_VERSIONS = ["11", "12", "12.1", "13", "13.1", "14", "15", "15.1", "16"];
-
-let catalog = null;
-
-const buildCatalog = (persist) => {
-  if (catalog) return catalog;
-
-  // One sample per version, preferring a single code point (easiest to judge).
-  const samples = {};
-  for (const version of PROBED_VERSIONS) {
-    const all = Object.values(data.emojis).flat().filter((e) => e.a === version);
-    const pick = all.find((e) => !e.u.includes("-")) ?? all[0];
-    if (pick) samples[version] = toChar(pick.u);
-  }
-  const support = probeEmojiSupport(samples, { persist });
-  const drawable = (e) =>
-    support.versions[e.a] !== false &&
-    (support.countryFlags || !isCountryFlag(e.u)) &&
-    (support.subdivisionFlags || !isSubdivisionFlag(e.u));
-
-  const byChar = new Map();
-  const sections = SECTIONS.map((s) => ({
-    ...s,
-    items: (data.emojis[s.id] || []).filter(drawable).map((e) => {
-      const item = {
-        c: toChar(e.u),
-        // The last name is the full one ("waving hand"); the rest are keywords.
-        n: e.n[e.n.length - 1],
-        k: e.n.join(" ").toLowerCase(),
-        t: e.v?.map(toChar),
-      };
-      byChar.set(item.c, item);
-      item.t?.forEach((c) => byChar.set(c, { ...item, c }));
-      return item;
-    }),
-  })).filter((s) => s.items.length);
-
-  catalog = { sections, byChar, all: sections.flatMap((s) => s.items) };
-  return catalog;
+/** Split a section into blocks of whole rows, each skipped while off screen. */
+const toBlocks = (items, cols) => {
+  const size = cols * BLOCK_ROWS;
+  const blocks = [];
+  for (let i = 0; i < items.length; i += size) blocks.push(items.slice(i, i + size));
+  return blocks;
 };
 
 // ── Recents (never touched in a temp chat) ──────────────────────────────────
@@ -116,6 +73,43 @@ const rememberRecent = (char) => {
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * Four rows of emoji. Blocks far from view stay empty placeholders of the
+ * right height (so tab jumps land exactly) and fill in when they come within
+ * a few rows of the visible area: opening the card builds ~3 blocks, not 40.
+ */
+const Block = ({ items, cols, scrollRef, eager }) => {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(eager);
+
+  useEffect(() => {
+    if (shown || !ref.current) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setShown(true);
+          io.disconnect();
+        }
+      },
+      { root: scrollRef.current, rootMargin: "300px 0px" },
+    );
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [shown, scrollRef]);
+
+  const height = Math.ceil(items.length / cols) * CELL;
+  return (
+    <div
+      ref={ref}
+      className="nx-grid nx-grid--lazy"
+      // The block's real height, reserved while it's empty or skipped.
+      style={shown ? { containIntrinsicSize: `auto ${height}px` } : { height }}
+    >
+      {shown && items.map((it) => <Cell key={it.c} item={it} />)}
+    </div>
+  );
+};
+
 const Cell = ({ item }) => (
   <button
     type="button"
@@ -138,7 +132,7 @@ const Cell = ({ item }) => (
  */
 const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
   const { t, dark } = useTheme();
-  const { sections: base, byChar, all } = useMemo(() => buildCatalog(!ephemeral), [ephemeral]);
+  const { sections: base, byChar, all } = useMemo(() => getEmojiCatalog(!ephemeral), [ephemeral]);
 
   // Recents as they were when the card opened, so the grid doesn't shift
   // under the pointer while you pick several in a row (saved for next time).
@@ -150,9 +144,15 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
           .filter(Boolean),
   );
   const sections = useMemo(
-    () => (recents.length ? [{ ...RECENT, items: recents }, ...base] : base),
+    () => (recents.length ? [{ id: "recent", label: "Recent", items: recents }, ...base] : base),
     [recents, base],
   );
+
+  // If the card opened before the idle warm-up got to everything, finish it
+  // now so the other tabs are ready by the time you reach them.
+  useEffect(() => {
+    warmEmojiGlyphs({ persist: !ephemeral });
+  }, [ephemeral]);
 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(sections[0]?.id);
@@ -235,7 +235,13 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
     if (!item?.t || !rootRef.current) return;
     const root = rootRef.current.getBoundingClientRect();
     const cell = el.getBoundingClientRect();
-    setTones({ item, x: cell.left - root.left + cell.width / 2, y: cell.top - root.top });
+    // Centred over the emoji, kept inside the card (the strip is ~290px wide).
+    const x = cell.left - root.left + cell.width / 2;
+    setTones({
+      item,
+      x: Math.min(Math.max(x, 150), root.width - 150),
+      y: Math.max(cell.top - root.top - 6, 60),
+    });
   };
 
   const handlers = {
@@ -284,7 +290,8 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
     >
       {/* Tabs */}
       <div role="tablist" aria-label="Emoji categories" className="shrink-0 flex px-2 pt-2">
-        {sections.map(({ id, label, icon: Icon }) => {
+        {sections.map(({ id, label }) => {
+          const Icon = ICONS[id];
           const on = !results && active === id;
           return (
             <button
@@ -375,7 +382,7 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
             <p className={`py-10 text-center text-sm ${muted}`}>No emoji found</p>
           )
         ) : (
-          sections.map((s) => (
+          sections.map((s, si) => (
             <section
               key={s.id}
               ref={(el) => {
@@ -384,16 +391,16 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
               aria-label={s.label}
             >
               <h3 className={`px-1 pt-3 pb-1.5 text-sm font-medium ${muted}`}>{s.label}</h3>
-              <div
-                className="nx-grid nx-grid--lazy"
-                // Reserve the section's real height while the browser skips it,
-                // so tab jumps land exactly.
-                style={{ containIntrinsicSize: `auto ${Math.ceil(s.items.length / cols) * CELL}px` }}
-              >
-                {s.items.map((it) => (
-                  <Cell key={it.c} item={it} />
-                ))}
-              </div>
+              {toBlocks(s.items, cols).map((block, bi) => (
+                <Block
+                  key={`${cols}:${block[0].c}`}
+                  items={block}
+                  cols={cols}
+                  scrollRef={scrollRef}
+                  // What's on screen when the card opens is built right away.
+                  eager={si === 0 && bi < 3}
+                />
+              ))}
             </section>
           ))
         )}
@@ -410,10 +417,7 @@ const EmojiPanel = ({ onPick, height = 420, ephemeral = false }) => {
               "bg-stone-800 border-white/10",
               "bg-white border-stone-200",
             )}`}
-            style={{
-              left: Math.min(Math.max(tones.x, 150), (rootRef.current?.clientWidth ?? 300) - 150),
-              top: Math.max(tones.y - 6, 60),
-            }}
+            style={{ left: tones.x, top: tones.y }}
           >
             {[tones.item.c, ...tones.item.t].map((c) => (
               <button

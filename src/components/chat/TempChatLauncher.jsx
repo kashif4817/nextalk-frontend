@@ -17,7 +17,7 @@ export const TempChatConfirm = ({ open, onClose }) => (
     }}
     variant="info"
     title="Start a temp chat?"
-    message="You'll get a private link to share. Temp chats are anonymous: they aren't linked to your NexTalk account, nothing is saved, and the chat disappears when either of you leaves. It opens in a new tab, so you stay signed in here."
+    message="You'll get a private link to share. Temp chats are anonymous: they aren't linked to your NexTalk account, nothing is saved, and the chat is deleted when it ends. It opens in a new tab, so you stay signed in here."
     confirmLabel="Start temp chat"
     cancelLabel="Not now"
   />
@@ -46,7 +46,7 @@ export const TempChatButton = ({ className = "" }) => {
             Start a temp chat
           </span>
           <span className={`block text-xs ${t("text-stone-400", "text-stone-500")}`}>
-            Anonymous. Disappears when you leave.
+            Anonymous. Nothing is saved.
           </span>
         </span>
         <ArrowRight

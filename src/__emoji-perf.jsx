@@ -11,7 +11,7 @@ const marks = (window.__marks = {});
 new MutationObserver(() => {
   const now = performance.now();
   if (!marks.panel && document.querySelector(".nx-emoji")) marks.panel = now;
-  if (!marks.firstEmoji && document.querySelector('[data-epr-part="emoji"]')) marks.firstEmoji = now;
+  if (!marks.firstEmoji && document.querySelector('.nx-e, [data-epr-part="emoji"]')) marks.firstEmoji = now;
 }).observe(document.body, { subtree: true, childList: true });
 
 const scroller = () => {
@@ -23,19 +23,26 @@ const scroller = () => {
 
 const visibleEmoji = (vp) => {
   const r = vp.getBoundingClientRect();
-  return [...vp.querySelectorAll('[data-epr-part="emoji"]')].filter((e) => {
+  return [...vp.querySelectorAll('.nx-e, [data-epr-part="emoji"]')].filter((e) => {
     const b = e.getBoundingClientRect();
     return b.bottom > r.top + 4 && b.top < r.bottom - 4;
   });
 };
 
+window.__chars = () =>
+  import("./lib/emojiCatalog.js").then((m) => m.getEmojiCatalog().all.map((it) => it.c));
+window.__preload = () =>
+  import("./components/chat/EmojiPanel.jsx").then(() =>
+    window.__warm ? import("./lib/emojiCatalog.js").then((m) => m.warmEmojiGlyphs()) : null,
+  );
+
 // Click tab i and time: scroll jump, then a screenful of emoji cells in place.
 window.__tab = async (i) => {
-  const tabs = document.querySelectorAll('[data-epr-part="category-tab"]');
+  const tabs = document.querySelectorAll('.nx-emoji [role="tab"], [data-epr-part="category-tab"]');
   const vp = scroller();
   const before = vp.scrollTop;
   const t0 = performance.now();
-  tabs[i].click();
+  tabs[i % tabs.length].click();
   let scrolled = null;
   let filled = null;
   let worstFrame = 0;
@@ -52,7 +59,7 @@ window.__tab = async (i) => {
     }
   }
   return {
-    tab: tabs[i].getAttribute("aria-label") || i,
+    tab: tabs[i % tabs.length].getAttribute("aria-label") || i,
     scrolledMs: Math.round(scrolled ?? -1),
     filledMs: Math.round(filled ?? -1),
     worstFrameMs: Math.round(worstFrame),
@@ -65,6 +72,7 @@ const App = () => {
     marks.click = performance.now();
     setOpen(true);
   };
+  window.__close = () => setOpen(false);
   return (
     <div className="h-screen relative bg-stone-100">
       {open && (

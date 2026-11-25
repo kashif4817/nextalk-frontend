@@ -4,8 +4,8 @@ import { io } from "socket.io-client";
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export const TEMP_MAX_CHARS = 2000;
-/** Matches RECONNECT_GRACE_MS on the server: how long a dropped person has to return. */
-export const RECONNECT_GRACE_SECONDS = 20;
+/** Matches LEAVE_GRACE_MS on the server: how long someone who left has to come back. */
+export const LEAVE_GRACE_SECONDS = 10 * 60;
 
 // Ticks only ever move forward: sending → sent (✓) → delivered (✓✓) → seen (amber ✓✓).
 const RANK = { failed: -1, sending: 0, sent: 1, delivered: 2, seen: 3 };
@@ -86,8 +86,8 @@ const requestHandoff = (roomId, signal) =>
  *
  * Messages exist only in this hook's state: nothing is written to
  * localStorage, IndexedDB or the shared chat cache, and the server keeps no
- * copy. Ending the chat — either side leaving, closing the tab, going back —
- * wipes them.
+ * copy. Closing this tab loses this tab's copy; the chat itself carries on for
+ * 10 minutes so the same link brings you back. End chat wipes it for both.
  *
  * status:  idle → connecting → waiting → active ⇄ away → ended   (creator)
  *          joining → active ⇄ away → ended                       (guest)
@@ -104,8 +104,11 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
   const [messages, setMessages] = useState([]);
   const [peerTyping, setPeerTyping] = useState(false);
   const [connected, setConnected] = useState(true);
-  // When the other person dropped (status "away"), for the reconnect countdown.
-  const [awaySince, setAwaySince] = useState(null);
+  // When the other person left (status "away"): when their held seat expires (ms).
+  const [awayUntil, setAwayUntil] = useState(null);
+  // We came back (same link) to a chat that was still going; earlier messages
+  // stayed in the tab that was closed.
+  const [rejoined, setRejoined] = useState(false);
   // Whether they have the chat in front of them (tab visible and focused).
   const [peerFocused, setPeerFocused] = useState(true);
   // Their messages we've received but not yet reported as seen.
@@ -121,15 +124,16 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
     peerFocusedRef.current = peerFocused;
   }, [peerFocused]);
 
-  const peerAway = useCallback(() => {
+  /** They left; their seat is held for `seconds` more. */
+  const peerAway = useCallback((seconds) => {
     setStatus("away");
     setPeerTyping(false);
-    setAwaySince(Date.now());
+    setAwayUntil(Date.now() + (Number(seconds) || LEAVE_GRACE_SECONDS) * 1000);
   }, []);
 
   const peerHere = useCallback(() => {
     setStatus("active");
-    setAwaySince(null);
+    setAwayUntil(null);
     // They re-announce their focus as soon as they're in.
     setPeerFocused(true);
   }, []);
@@ -139,7 +143,7 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
     (res) => {
       if (res.peers < 2) setStatus("waiting");
       else if (res.peerOnline) peerHere();
-      else peerAway();
+      else peerAway(res.peerAwaySeconds);
     },
     [peerAway, peerHere],
   );
@@ -212,10 +216,10 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
       socket.io.on("reconnect_failed", () => end("connection"));
 
       socket.on("peer:joined", peerHere);
-      socket.on("peer:away", peerAway);
+      socket.on("peer:away", ({ seconds } = {}) => peerAway(seconds));
       socket.on("peer:back", peerHere);
       socket.on("room:ended", ({ reason } = {}) =>
-        end(reason === "expired" ? "expired" : "left"),
+        end(reason === "expired" || reason === "timed_out" ? reason : "left"),
       );
 
       socket.on("msg", (m) => {
@@ -278,11 +282,11 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
         if (!res?.ok) return end(res?.reason || "connection");
         sessionRef.current = { roomId: joinRoomId, token: res.token };
         setRoomId(joinRoomId);
-        if (res.peerOnline === false) peerAway();
-        else peerHere();
+        setRejoined(Boolean(res.rejoined));
+        applySeat(res);
       });
     });
-  }, [joinRoomId, connect, end, peerAway, peerHere]);
+  }, [joinRoomId, connect, end, applySeat]);
 
   /** Continue, in this tab, the chat another tab just handed over. */
   const adoptHandoff = useCallback(
@@ -403,13 +407,15 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
     };
   }, [holding, rejoin]);
 
-  // Leaving the page in any way — back, close, refresh, navigating — ends it.
+  // Leaving the page — closing the tab, refreshing, going back — doesn't end
+  // the chat: the server holds the seat for 10 minutes so the same link brings
+  // you back. Only End chat / Cancel chat (leave()) ends it outright.
   useEffect(() => {
-    const onPageHide = () => teardown(true);
+    const onPageHide = () => teardown(false);
     window.addEventListener("pagehide", onPageHide);
     return () => {
       window.removeEventListener("pagehide", onPageHide);
-      teardown(true);
+      teardown(false);
     };
   }, [teardown]);
 
@@ -468,7 +474,8 @@ export const useTempChat = ({ mode, roomId: joinRoomId }) => {
     peerTyping,
     peerFocused,
     connected,
-    awaySince,
+    awayUntil,
+    rejoined,
     start,
     moveHere,
     send,

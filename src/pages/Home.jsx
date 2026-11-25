@@ -531,7 +531,7 @@ const Home = () => {
                     Start a temp chat
                   </span>
                   <span className={`block text-xs ${t("text-stone-400", "text-stone-500")}`}>
-                    No sign-up. Disappears when you leave.
+                    No sign-up. Nothing is saved.
                   </span>
                 </span>
                 <ArrowRight className={`w-4 h-4 group-hover:translate-x-0.5 transition-transform ${t("text-amber-400", "text-amber-600")}`} />

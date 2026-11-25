@@ -1,5 +1,7 @@
-// Loads the emoji card's code ahead of time, so the first tap on 😀 opens it
-// at once instead of waiting on a download (it isn't in the main bundle).
+// Gets the emoji card ready ahead of time, so the first tap on 😀 opens it at
+// once: its code is downloaded at idle (it isn't in the main bundle), then
+// every emoji glyph is laid out off screen in idle slices (see
+// lib/emojiCatalog.js for why that matters: ~1 s first open -> ~40 ms).
 
 import { useEffect, useState } from "react";
 
@@ -15,11 +17,19 @@ export const loadEmojiPanel = () =>
       throw err;
     }));
 
+/** Lay every emoji out once at idle (no-op after the first call). */
+const warm = (persist) =>
+  import("./emojiCatalog")
+    .then((m) => m.warmEmojiGlyphs({ persist }))
+    .catch(() => {});
+
 /**
  * The EmojiPanel component, or null until its code has arrived. Preloads it
- * once the browser is idle, and right away when `wanted` (the card is open).
+ * (and warms its glyphs) once the browser is idle, and right away when
+ * `wanted` (the card is open). Pass `persist: false` for temp chats, which
+ * must leave nothing in storage.
  */
-export const useEmojiPanel = (wanted) => {
+export const useEmojiPanel = (wanted, { persist = true } = {}) => {
   const [Panel, setPanel] = useState(() => loaded);
 
   useEffect(() => {
@@ -27,7 +37,10 @@ export const useEmojiPanel = (wanted) => {
     let live = true;
     const load = () =>
       loadEmojiPanel()
-        .then((C) => live && setPanel(() => C))
+        .then((C) => {
+          if (live) setPanel(() => C);
+          warm(persist);
+        })
         .catch(() => {});
 
     if (wanted) {
@@ -44,7 +57,7 @@ export const useEmojiPanel = (wanted) => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(idle);
       else clearTimeout(idle);
     };
-  }, [Panel, wanted]);
+  }, [Panel, wanted, persist]);
 
   return Panel;
 };
